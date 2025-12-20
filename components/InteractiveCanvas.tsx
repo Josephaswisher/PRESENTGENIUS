@@ -1,10 +1,9 @@
 /**
  * Interactive Canvas - Unified Lecture Builder for Dr. Swisher
- * Combines Socratic outline + Multi-source research (UpToDate, MKSAP, Perplexity, PubMed)
+ * Combines Socratic outline + Multi-source research + AI Chat Assistant
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  XMarkIcon,
   PlusIcon,
   SparklesIcon,
   ArrowPathIcon,
@@ -17,9 +16,9 @@ import {
   CheckCircleIcon,
   PlayIcon,
   MagnifyingGlassIcon,
-  BookOpenIcon,
   Cog6ToothIcon,
-  BoltIcon,
+  PaperAirplaneIcon,
+  ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 import { generateWithProvider, AIProvider } from '../services/ai-provider';
 import { searchMedicalEvidence, getLatestGuidelines } from '../services/perplexity';
@@ -73,6 +72,14 @@ interface CanvasDocument {
   sections: Section[];
 }
 
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  action?: 'research' | 'outline' | 'section' | 'modify';
+}
+
 interface Props {
   onGenerateSlides: (doc: CanvasDocument) => void;
   currentProvider: AIProvider;
@@ -117,6 +124,13 @@ const AI_PROVIDERS: { id: AIProvider; name: string; icon: string }[] = [
   { id: 'claude', name: 'Claude Sonnet', icon: '🎭' },
 ];
 
+const QUICK_ACTIONS = [
+  { label: 'Suggest a topic', prompt: 'Suggest 5 high-yield medical education topics for residents' },
+  { label: 'Add a case', prompt: 'Add a clinical case section to illustrate the key concepts' },
+  { label: 'More depth', prompt: 'Add more pathophysiology depth to the current outline' },
+  { label: 'Board questions', prompt: 'Suggest board-style questions I should include' },
+];
+
 export const InteractiveCanvas: React.FC<Props> = ({ 
   onGenerateSlides, 
   currentProvider,
@@ -144,10 +158,28 @@ export const InteractiveCanvas: React.FC<Props> = ({
   const [showSettings, setShowSettings] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      id: 'welcome',
+      role: 'assistant',
+      content: "Hi Dr. Swisher! I'm your lecture building assistant. Tell me what topic you'd like to teach, or ask me to help refine your outline. I can research topics, suggest sections, add clinical cases, or help structure your content.",
+      timestamp: new Date(),
+    }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatProcessing, setIsChatProcessing] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   // Check scraper on mount
   useEffect(() => {
     checkScraperHealth().then(setScraperStatus);
   }, []);
+
+  // Scroll chat to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   // Toggle research source
   const toggleSource = (source: ResearchSource) => {
@@ -173,6 +205,128 @@ export const InteractiveCanvas: React.FC<Props> = ({
     setIsLoggingIn(false);
   };
 
+  // Chat handler
+  const handleChatSubmit = async (message?: string) => {
+    const userMessage = message || chatInput.trim();
+    if (!userMessage || isChatProcessing) return;
+
+    const userMsg: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date(),
+    };
+    setChatMessages(prev => [...prev, userMsg]);
+    setChatInput('');
+    setIsChatProcessing(true);
+
+    try {
+      // Build context about current state
+      const contextParts = [];
+      if (doc.topic) contextParts.push(`Current topic: "${doc.topic}"`);
+      if (doc.sections.length > 0) {
+        contextParts.push(`Current outline (${doc.sections.length} sections):\n${doc.sections.map((s, i) => 
+          `${i+1}. ${s.title} (${s.type}) - ${s.keyPoints.join(', ')}`
+        ).join('\n')}`);
+      }
+      if (globalResearch.length > 0) {
+        contextParts.push(`Research available from: ${globalResearch.map(r => r.source).join(', ')}`);
+      }
+
+      const systemPrompt = `You are Dr. Swisher's lecture building assistant for PRESENTGENIUS. You help create medical education presentations.
+
+CURRENT STATE:
+${contextParts.length > 0 ? contextParts.join('\n\n') : 'No lecture started yet.'}
+Target Audience: ${doc.targetAudience}
+Duration: ${doc.duration} minutes
+
+You can help by:
+1. Suggesting lecture topics and structures
+2. Recommending sections to add or modify
+3. Providing clinical pearls and teaching points
+4. Suggesting board-style questions
+5. Helping refine content and flow
+
+If the user asks to SET THE TOPIC, respond with: [ACTION:SET_TOPIC:topic name here]
+If the user asks to ADD A SECTION, respond with: [ACTION:ADD_SECTION:{"title":"...","type":"concept|case|mechanism|clinical","keyPoints":["..."]}]
+If the user asks to RESEARCH, respond with: [ACTION:RESEARCH]
+If the user asks to GENERATE OUTLINE, respond with: [ACTION:GENERATE_OUTLINE]
+
+Be concise, practical, and focused on high-yield medical education. Always be helpful and proactive.`;
+
+      const response = await generateWithProvider(currentProvider, userMessage, [], {
+        systemPrompt,
+      });
+
+      // Parse for actions
+      const actionMatch = response.match(/\[ACTION:(\w+)(?::(.+?))?\]/);
+      if (actionMatch) {
+        const [, action, payload] = actionMatch;
+        const cleanResponse = response.replace(/\[ACTION:.+?\]/g, '').trim();
+
+        switch (action) {
+          case 'SET_TOPIC':
+            if (payload) {
+              setDoc(prev => ({ ...prev, topic: payload }));
+            }
+            break;
+          case 'ADD_SECTION':
+            if (payload) {
+              try {
+                const sectionData = JSON.parse(payload);
+                const newSection: Section = {
+                  id: `section-${Date.now()}`,
+                  title: sectionData.title || 'New Section',
+                  type: sectionData.type || 'concept',
+                  content: '',
+                  keyPoints: sectionData.keyPoints || [],
+                  slideCount: 4,
+                  isExpanded: true,
+                  followUpQuestions: [],
+                };
+                setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
+              } catch (e) {
+                console.error('Failed to parse section:', e);
+              }
+            }
+            break;
+          case 'RESEARCH':
+            researchTopic();
+            break;
+          case 'GENERATE_OUTLINE':
+            generateOutline();
+            break;
+        }
+
+        if (cleanResponse) {
+          setChatMessages(prev => [...prev, {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content: cleanResponse,
+            timestamp: new Date(),
+            action: action.toLowerCase() as any,
+          }]);
+        }
+      } else {
+        setChatMessages(prev => [...prev, {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: response,
+          timestamp: new Date(),
+        }]);
+      }
+    } catch (error) {
+      console.error('Chat error:', error);
+      setChatMessages(prev => [...prev, {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.',
+        timestamp: new Date(),
+      }]);
+    }
+    setIsChatProcessing(false);
+  };
+
   // Research the topic across selected sources
   const researchTopic = async () => {
     if (!doc.topic.trim() || selectedSources.length === 0) return;
@@ -180,9 +334,6 @@ export const InteractiveCanvas: React.FC<Props> = ({
     setIsResearching(true);
     setGlobalResearch([]);
     
-    const results: ResearchResult[] = [];
-    
-    // Research each source in parallel
     const promises = selectedSources.map(async (source) => {
       try {
         let result: ResearchResult;
@@ -372,7 +523,6 @@ Return JSON array ONLY.`;
 
     setExpandingSection(sectionId);
     try {
-      // Get section-specific research
       const sectionResearch = await searchMedicalEvidence(`${doc.topic} ${section.title}`);
 
       const prompt = `You are an expert medical educator writing lecture content.
@@ -386,17 +536,7 @@ AUDIENCE: ${doc.targetAudience}
 RESEARCH:
 ${sectionResearch.summary}
 
-KEY EVIDENCE:
-${sectionResearch.keyPoints.join('\n')}
-
-Write engaging lecture content:
-1. Explain concepts clearly with clinical relevance
-2. Use research for accuracy
-3. Include specific examples and numbers
-4. Maintain conversational teaching tone
-5. Build toward key points
-
-Write 2-3 paragraphs of prose (not bullets).`;
+Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
 
       const response = await generateWithProvider(currentProvider, prompt, [], {});
 
@@ -562,17 +702,14 @@ Write 2-3 paragraphs of prose (not bullets).`;
                 🩺 {scraperStatus?.mksap_logged_in ? 'MKSAP ✓' : 'Login MKSAP'}
               </button>
             </div>
-            <p className="text-xs text-zinc-600 mt-2">
-              Run: <code className="bg-zinc-800 px-1 rounded">python3 studio/scraper/scraper_service.py</code>
-            </p>
           </div>
         )}
       </div>
 
-      {/* Main Content */}
+      {/* Main Content - 3 Column Layout */}
       <div className="flex-1 overflow-hidden flex">
         {/* Left Panel - Setup & Research */}
-        <div className="w-80 lg:w-96 border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden">
+        <div className="w-72 border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden">
           <div className="p-4 space-y-4 overflow-y-auto flex-1">
             {/* Topic */}
             <div>
@@ -588,25 +725,25 @@ Write 2-3 paragraphs of prose (not bullets).`;
             </div>
 
             {/* Audience & Duration */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Audience</label>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">Audience</label>
                 <select
                   value={doc.targetAudience}
                   onChange={(e) => setDoc(prev => ({ ...prev, targetAudience: e.target.value }))}
-                  className="w-full px-2 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm"
+                  className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs"
                 >
                   {AUDIENCES.map(a => (
-                    <option key={a.id} value={a.id}>{a.icon} {a.label}</option>
+                    <option key={a.id} value={a.id}>{a.label}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Duration</label>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">Duration</label>
                 <select
                   value={doc.duration}
                   onChange={(e) => setDoc(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
-                  className="w-full px-2 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm"
+                  className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs"
                 >
                   <option value={15}>15 min</option>
                   <option value={30}>30 min</option>
@@ -618,26 +755,22 @@ Write 2-3 paragraphs of prose (not bullets).`;
 
             {/* Research Sources */}
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-2">Research Sources</label>
-              <div className="flex flex-wrap gap-2">
+              <label className="block text-xs font-medium text-zinc-400 mb-2">Sources</label>
+              <div className="flex flex-wrap gap-1.5">
                 {RESEARCH_SOURCES.map(source => {
                   const isSelected = selectedSources.includes(source.id);
-                  const needsLogin = (source.id === 'uptodate' && !scraperStatus?.uptodate_logged_in) ||
-                                    (source.id === 'mksap' && !scraperStatus?.mksap_logged_in);
-                  
                   return (
                     <button
                       key={source.id}
                       onClick={() => toggleSource(source.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all border ${
+                      className={`px-2 py-1 rounded text-xs flex items-center gap-1 transition-all ${
                         isSelected
-                          ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-400 border-cyan-500/50'
-                          : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-zinc-600'
+                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
+                          : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
                       }`}
                     >
                       <span>{source.icon}</span>
                       <span>{source.name}</span>
-                      {needsLogin && <span className="text-yellow-400">🔐</span>}
                     </button>
                   );
                 })}
@@ -649,28 +782,26 @@ Write 2-3 paragraphs of prose (not bullets).`;
               <button
                 onClick={researchTopic}
                 disabled={!doc.topic.trim() || isResearching || selectedSources.length === 0}
-                className="w-full py-2.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 rounded-lg
-                           text-sm font-medium text-cyan-400 flex items-center justify-center gap-2 
-                           disabled:opacity-50 transition-all"
+                className="w-full py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 rounded-lg
+                           text-xs font-medium text-cyan-400 flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {isResearching ? (
-                  <><ArrowPathIcon className="w-4 h-4 animate-spin" /> Researching {selectedSources.length} sources...</>
+                  <><ArrowPathIcon className="w-3 h-3 animate-spin" /> Researching...</>
                 ) : (
-                  <><MagnifyingGlassIcon className="w-4 h-4" /> Research Topic</>
+                  <><MagnifyingGlassIcon className="w-3 h-3" /> Research</>
                 )}
               </button>
 
               <button
                 onClick={generateOutline}
                 disabled={!doc.topic.trim() || isGeneratingOutline}
-                className="w-full py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg
-                           text-sm font-medium text-white flex items-center justify-center gap-2
-                           disabled:opacity-50 hover:shadow-lg hover:shadow-purple-500/25 transition-all"
+                className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg
+                           text-xs font-medium text-white flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {isGeneratingOutline ? (
-                  <><ArrowPathIcon className="w-4 h-4 animate-spin" /> Generating...</>
+                  <><ArrowPathIcon className="w-3 h-3 animate-spin" /> Generating...</>
                 ) : (
-                  <><SparklesIcon className="w-4 h-4" /> Generate Outline</>
+                  <><SparklesIcon className="w-3 h-3" /> Generate Outline</>
                 )}
               </button>
             </div>
@@ -678,19 +809,14 @@ Write 2-3 paragraphs of prose (not bullets).`;
             {/* Research Results */}
             {globalResearch.length > 0 && (
               <div className="space-y-2">
-                <div className="text-xs font-medium text-zinc-400">Research Complete</div>
+                <div className="text-xs font-medium text-zinc-400">Research</div>
                 {globalResearch.map(r => (
-                  <div key={r.source} className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-xl">
-                    <div className="flex items-center gap-2 text-cyan-400 text-xs font-medium mb-2">
+                  <div key={r.source} className="p-2 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
+                    <div className="flex items-center gap-1.5 text-cyan-400 text-xs font-medium mb-1">
                       {RESEARCH_SOURCES.find(s => s.id === r.source)?.icon}
                       {RESEARCH_SOURCES.find(s => s.id === r.source)?.name}
-                      <span className="text-zinc-500">• {r.keyPoints.length} points</span>
                     </div>
-                    <div className="text-xs text-zinc-400 max-h-24 overflow-y-auto">
-                      {r.keyPoints.slice(0, 4).map((point, i) => (
-                        <div key={i}>• {point.slice(0, 80)}{point.length > 80 ? '...' : ''}</div>
-                      ))}
-                    </div>
+                    <div className="text-xs text-zinc-500">{r.keyPoints.length} key points</div>
                   </div>
                 ))}
               </div>
@@ -706,17 +832,14 @@ Write 2-3 paragraphs of prose (not bullets).`;
                       key={section.id}
                       onClick={() => toggleSection(section.id)}
                       className={`w-full text-left p-2 rounded-lg transition-all flex items-center gap-2 ${
-                        section.isExpanded
-                          ? 'bg-zinc-800 border border-cyan-500/30'
-                          : 'hover:bg-zinc-800/50'
+                        section.isExpanded ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
                       }`}
                     >
-                      <span>{SECTION_ICONS[section.type] || '📄'}</span>
+                      <span className="text-sm">{SECTION_ICONS[section.type]}</span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs text-zinc-500">{i + 1}</div>
-                        <div className="text-sm text-white truncate">{section.title}</div>
+                        <div className="text-xs text-white truncate">{section.title}</div>
                       </div>
-                      {section.content && <CheckCircleIcon className="w-4 h-4 text-green-400" />}
+                      {section.content && <CheckCircleIcon className="w-3 h-3 text-green-400" />}
                     </button>
                   ))}
                 </div>
@@ -725,41 +848,36 @@ Write 2-3 paragraphs of prose (not bullets).`;
           </div>
         </div>
 
-        {/* Right Panel - Sections Editor */}
-        <div className="flex-1 overflow-y-auto p-6">
+        {/* Center Panel - Sections Editor */}
+        <div className="flex-1 overflow-y-auto p-4">
           {doc.sections.length === 0 ? (
             <div className="h-full flex items-center justify-center">
-              <div className="text-center max-w-lg">
-                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center">
-                  <LightBulbIcon className="w-10 h-10 text-cyan-400" />
+              <div className="text-center max-w-md">
+                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center">
+                  <LightBulbIcon className="w-8 h-8 text-cyan-400" />
                 </div>
-                <h2 className="text-2xl font-bold text-white mb-3">Build Your Lecture</h2>
-                <p className="text-zinc-400 mb-6">
-                  Enter a topic, research with UpToDate/MKSAP/Perplexity, then generate a 
-                  Socratic outline with thought-provoking questions.
+                <h2 className="text-xl font-bold text-white mb-2">Build Your Lecture</h2>
+                <p className="text-zinc-400 text-sm mb-4">
+                  Enter a topic on the left, or chat with the assistant on the right to get started.
                 </p>
-                <div className="grid grid-cols-2 gap-3 text-left">
-                  <div className="p-4 bg-orange-500/10 rounded-xl border border-orange-500/20">
-                    <div className="text-orange-400 font-medium mb-1">📚 UpToDate</div>
-                    <div className="text-zinc-500 text-xs">Clinical decision support</div>
+                <div className="grid grid-cols-2 gap-2 text-left text-xs">
+                  <div className="p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
+                    <div className="text-orange-400 font-medium">📚 UpToDate</div>
                   </div>
-                  <div className="p-4 bg-blue-500/10 rounded-xl border border-blue-500/20">
-                    <div className="text-blue-400 font-medium mb-1">🩺 MKSAP 19</div>
-                    <div className="text-zinc-500 text-xs">Board-style content</div>
+                  <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                    <div className="text-blue-400 font-medium">🩺 MKSAP 19</div>
                   </div>
-                  <div className="p-4 bg-purple-500/10 rounded-xl border border-purple-500/20">
-                    <div className="text-purple-400 font-medium mb-1">🔮 Perplexity</div>
-                    <div className="text-zinc-500 text-xs">AI-powered search</div>
+                  <div className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                    <div className="text-purple-400 font-medium">🔮 Perplexity</div>
                   </div>
-                  <div className="p-4 bg-green-500/10 rounded-xl border border-green-500/20">
-                    <div className="text-green-400 font-medium mb-1">📄 PubMed</div>
-                    <div className="text-zinc-500 text-xs">Primary literature</div>
+                  <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
+                    <div className="text-green-400 font-medium">📄 PubMed</div>
                   </div>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="space-y-4 max-w-4xl mx-auto">
+            <div className="space-y-3 max-w-3xl mx-auto">
               {doc.sections.map((section, index) => (
                 <div
                   key={section.id}
@@ -769,127 +887,100 @@ Write 2-3 paragraphs of prose (not bullets).`;
                 >
                   {/* Section Header */}
                   <div
-                    className="p-4 flex items-center gap-3 cursor-pointer"
+                    className="p-3 flex items-center gap-3 cursor-pointer"
                     onClick={() => toggleSection(section.id)}
                   >
-                    <span className="text-2xl">{SECTION_ICONS[section.type]}</span>
+                    <span className="text-xl">{SECTION_ICONS[section.type]}</span>
                     <div className="flex-1">
                       <div className="text-xs text-zinc-500">Section {index + 1}</div>
-                      <div className="text-lg font-medium text-white">{section.title}</div>
+                      <div className="text-base font-medium text-white">{section.title}</div>
                     </div>
                     <span className="text-xs text-zinc-500">{section.slideCount} slides</span>
                     {section.isExpanded ? (
-                      <ChevronDownIcon className="w-5 h-5 text-zinc-500" />
+                      <ChevronDownIcon className="w-4 h-4 text-zinc-500" />
                     ) : (
-                      <ChevronRightIcon className="w-5 h-5 text-zinc-500" />
+                      <ChevronRightIcon className="w-4 h-4 text-zinc-500" />
                     )}
                   </div>
 
                   {/* Expanded Content */}
                   {section.isExpanded && (
-                    <div className="px-4 pb-4 space-y-4">
+                    <div className="px-3 pb-3 space-y-3">
                       {/* Key Points */}
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1.5">
                         {section.keyPoints.map((point, i) => (
-                          <span key={i} className="px-2 py-1 bg-zinc-800 rounded text-xs text-zinc-300">
+                          <span key={i} className="px-2 py-0.5 bg-zinc-800 rounded text-xs text-zinc-300">
                             {point}
                           </span>
                         ))}
                       </div>
 
-                      {/* Content or Expand Button */}
+                      {/* Content */}
                       {section.content ? (
-                        <div className="p-4 bg-zinc-800/50 rounded-xl">
+                        <div className="p-3 bg-zinc-800/50 rounded-lg">
                           <p className="text-sm text-zinc-300 whitespace-pre-wrap">{section.content}</p>
-                          {section.research && section.research.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-zinc-700 text-xs text-cyan-400">
-                              📚 {section.research.reduce((sum, r) => sum + r.citations.length, 0)} citations
-                            </div>
-                          )}
                         </div>
                       ) : (
                         <button
                           onClick={() => expandSection(section.id)}
                           disabled={expandingSection === section.id}
-                          className="w-full py-3 border-2 border-dashed border-zinc-700 rounded-xl text-zinc-500
-                                     hover:border-purple-500/50 hover:text-purple-400 transition-all
-                                     flex items-center justify-center gap-2"
+                          className="w-full py-2 border border-dashed border-zinc-700 rounded-lg text-zinc-500 text-sm
+                                     hover:border-purple-500/50 hover:text-purple-400 flex items-center justify-center gap-2"
                         >
                           {expandingSection === section.id ? (
-                            <><ArrowPathIcon className="w-4 h-4 animate-spin" /> Researching & Writing...</>
+                            <><ArrowPathIcon className="w-3 h-3 animate-spin" /> Writing...</>
                           ) : (
-                            <><SparklesIcon className="w-4 h-4" /> Expand with AI + Research</>
+                            <><SparklesIcon className="w-3 h-3" /> Expand</>
                           )}
                         </button>
                       )}
 
                       {/* Socratic Questions */}
-                      <div className="pt-4 border-t border-zinc-800">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <QuestionMarkCircleIcon className="w-5 h-5 text-purple-400" />
-                            <span className="text-sm font-medium text-white">Socratic Follow-Ups</span>
-                          </div>
-                          <button
-                            onClick={() => generateSocraticQuestions(section.id)}
-                            disabled={generatingQuestionsFor === section.id}
-                            className="text-xs px-2 py-1 bg-purple-500/20 text-purple-400 rounded hover:bg-purple-500/30 flex items-center gap-1"
-                          >
-                            {generatingQuestionsFor === section.id ? (
-                              <ArrowPathIcon className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <SparklesIcon className="w-3 h-3" />
-                            )}
-                            Generate
-                          </button>
-                        </div>
-
-                        {section.followUpQuestions.length > 0 ? (
-                          <div className="space-y-2">
-                            {section.followUpQuestions.map((q) => {
-                              const style = QUESTION_STYLES[q.type] || QUESTION_STYLES.why;
+                      {section.followUpQuestions.length > 0 && (
+                        <div className="pt-3 border-t border-zinc-800">
+                          <div className="text-xs text-zinc-400 mb-2">Follow-up Questions</div>
+                          <div className="space-y-1.5">
+                            {section.followUpQuestions.slice(0, 3).map((q) => {
+                              const style = QUESTION_STYLES[q.type];
                               const isSelected = section.selectedQuestionId === q.id;
-
                               return (
                                 <button
                                   key={q.id}
                                   onClick={() => selectQuestion(section.id, q)}
-                                  className={`w-full text-left p-3 rounded-xl border transition-all ${
+                                  className={`w-full text-left p-2 rounded-lg text-xs transition-all ${
                                     isSelected
-                                      ? 'bg-purple-500/20 border-purple-500/50'
-                                      : 'bg-zinc-800/50 border-zinc-700 hover:border-purple-500/30'
+                                      ? 'bg-purple-500/20 border border-purple-500/50'
+                                      : 'bg-zinc-800/50 hover:bg-zinc-800'
                                   }`}
                                 >
-                                  <div className="flex items-start gap-3">
-                                    <span className="text-lg">{style.icon}</span>
-                                    <div className="flex-1">
-                                      <p className="text-sm text-white mb-1">"{q.question}"</p>
-                                      <p className="text-xs text-zinc-500 italic mb-2">{q.insight}</p>
-                                      <div className="flex items-center gap-2 text-xs">
-                                        <span className="text-zinc-600">→</span>
-                                        <span className="text-cyan-400">{q.nextTitle}</span>
-                                      </div>
-                                    </div>
-                                    {isSelected && <CheckCircleIcon className="w-5 h-5 text-purple-400" />}
-                                  </div>
+                                  <span className="mr-1">{style.icon}</span>
+                                  {q.question}
                                 </button>
                               );
                             })}
                           </div>
-                        ) : (
-                          <div className="text-center py-4 text-zinc-500 text-sm">
-                            {section.content ? 'Generate questions' : 'Expand section first'}
-                          </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
 
-                      {/* Remove */}
-                      <div className="flex justify-end">
+                      {/* Actions */}
+                      <div className="flex justify-between items-center">
+                        <button
+                          onClick={() => generateSocraticQuestions(section.id)}
+                          disabled={generatingQuestionsFor === section.id}
+                          className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                        >
+                          {generatingQuestionsFor === section.id ? (
+                            <ArrowPathIcon className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <QuestionMarkCircleIcon className="w-3 h-3" />
+                          )}
+                          Questions
+                        </button>
                         <button
                           onClick={() => removeSection(section.id)}
                           className="text-xs text-zinc-500 hover:text-red-400 flex items-center gap-1"
                         >
-                          <TrashIcon className="w-3 h-3" /> Remove
+                          <TrashIcon className="w-3 h-3" />
                         </button>
                       </div>
                     </div>
@@ -912,14 +1003,103 @@ Write 2-3 paragraphs of prose (not bullets).`;
                   };
                   setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
                 }}
-                className="w-full py-4 border-2 border-dashed border-zinc-700 rounded-xl text-zinc-500
-                           hover:border-cyan-500/50 hover:text-cyan-400 transition-all
-                           flex items-center justify-center gap-2"
+                className="w-full py-3 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-sm
+                           hover:border-cyan-500/50 hover:text-cyan-400 flex items-center justify-center gap-2"
               >
-                <PlusIcon className="w-5 h-5" /> Add Section
+                <PlusIcon className="w-4 h-4" /> Add Section
               </button>
             </div>
           )}
+        </div>
+
+        {/* Right Panel - Chat Assistant */}
+        <div className="w-80 border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden">
+          {/* Chat Header */}
+          <div className="flex-shrink-0 p-3 border-b border-zinc-800">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg">
+                <ChatBubbleLeftRightIcon className="w-4 h-4 text-purple-400" />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-white">Lecture Assistant</div>
+                <div className="text-xs text-zinc-500">Ask me anything</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Chat Messages */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {chatMessages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[90%] p-2.5 rounded-xl text-sm ${
+                    msg.role === 'user'
+                      ? 'bg-cyan-500/20 text-cyan-100'
+                      : 'bg-zinc-800 text-zinc-300'
+                  }`}
+                >
+                  {msg.content}
+                  {msg.action && (
+                    <div className="mt-1.5 pt-1.5 border-t border-zinc-700/50">
+                      <span className="text-xs text-purple-400">✓ Action: {msg.action}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {isChatProcessing && (
+              <div className="flex justify-start">
+                <div className="bg-zinc-800 text-zinc-400 p-2.5 rounded-xl text-sm flex items-center gap-2">
+                  <ArrowPathIcon className="w-3 h-3 animate-spin" />
+                  Thinking...
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Quick Actions */}
+          <div className="flex-shrink-0 px-3 py-2 border-t border-zinc-800">
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK_ACTIONS.map((action, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleChatSubmit(action.prompt)}
+                  disabled={isChatProcessing}
+                  className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-xs text-zinc-400 hover:text-white transition-all"
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Chat Input */}
+          <div className="flex-shrink-0 p-3 border-t border-zinc-800">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleChatSubmit()}
+                placeholder="Ask or instruct..."
+                disabled={isChatProcessing}
+                className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm
+                           placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
+              />
+              <button
+                onClick={() => handleChatSubmit()}
+                disabled={!chatInput.trim() || isChatProcessing}
+                className="p-2 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-lg text-white
+                           disabled:opacity-50 hover:shadow-lg transition-all"
+              >
+                <PaperAirplaneIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
