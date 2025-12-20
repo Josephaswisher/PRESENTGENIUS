@@ -1,18 +1,20 @@
 /**
  * Claude Opus 4 Service - Premium AI for high-quality content
- * Used for printables, detailed study materials, and complex content
+ * Uses OpenRouter as proxy to avoid CORS issues
  */
-import Anthropic from '@anthropic-ai/sdk';
 import { LearnerLevel, getActivityById, getLearnerLevelById } from '../data/activities';
 
-const OPUS_MODEL = 'claude-opus-4-5-20250514';
+// Use OpenRouter for Claude to avoid CORS issues
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const OPUS_MODEL = 'anthropic/claude-sonnet-4'; // OpenRouter model name
 
-const getClient = () => {
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('VITE_ANTHROPIC_API_KEY is not set');
-  }
-  return new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+const getApiKey = () => {
+  // Prefer OpenRouter (no CORS issues), fallback to Anthropic
+  return import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_ANTHROPIC_API_KEY;
+};
+
+const useOpenRouter = () => {
+  return !!import.meta.env.VITE_OPENROUTER_API_KEY;
 };
 
 export interface FileInput {
@@ -26,14 +28,18 @@ export interface GenerationOptions {
 }
 
 /**
- * Generate content with Opus - same interface as other providers
+ * Generate content with Opus via OpenRouter - same interface as other providers
  */
 export async function bringToLife(
   prompt: string,
   files: FileInput[] = [],
   options: GenerationOptions = {}
 ): Promise<string> {
-  const client = getClient();
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error('No API key available (VITE_OPENROUTER_API_KEY or VITE_ANTHROPIC_API_KEY)');
+  }
+
   const { activityId, learnerLevel } = options;
 
   let activityContext = '';
@@ -58,37 +64,47 @@ Focus on clarity, visual hierarchy, and actionable learning points.`;
 
   const finalPrompt = `${activityContext}${levelContext}\n\n${prompt}`;
 
-  const content: Anthropic.MessageParam['content'] = [];
+  // Build message content with images if present
+  const userContent: any[] = [];
   
   for (const file of files) {
     if (file.mimeType.startsWith('image/')) {
-      content.push({
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: file.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-          data: file.base64,
+      userContent.push({
+        type: 'image_url',
+        image_url: {
+          url: `data:${file.mimeType};base64,${file.base64}`,
         },
       });
     }
   }
-
-  content.push({ type: 'text', text: finalPrompt });
+  userContent.push({ type: 'text', text: finalPrompt });
 
   try {
-    const response = await client.messages.create({
-      model: OPUS_MODEL,
-      max_tokens: 16000,
-      system: systemPrompt,
-      messages: [{ role: 'user', content }],
+    const response = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'PRESENTGENIUS Medical Education',
+      },
+      body: JSON.stringify({
+        model: OPUS_MODEL,
+        max_tokens: 16000,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent.length === 1 ? finalPrompt : userContent },
+        ],
+      }),
     });
 
-    let text = '';
-    for (const block of response.content) {
-      if (block.type === 'text') {
-        text += block.text;
-      }
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
     }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content || '';
 
     return text || '<!-- Failed to generate content -->';
   } catch (error) {
@@ -98,10 +114,13 @@ Focus on clarity, visual hierarchy, and actionable learning points.`;
 }
 
 /**
- * Refine content with Opus
+ * Refine content with Opus via OpenRouter
  */
 export async function refineArtifact(currentHtml: string, instruction: string): Promise<string> {
-  const client = getClient();
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error('No API key available');
+  }
 
   const prompt = `Refine this educational content:
 
@@ -114,18 +133,28 @@ ${instruction}
 Maintain quality and accuracy. Return only the updated content.`;
 
   try {
-    const response = await client.messages.create({
-      model: OPUS_MODEL,
-      max_tokens: 16000,
-      messages: [{ role: 'user', content: prompt }],
+    const response = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'PRESENTGENIUS Medical Education',
+      },
+      body: JSON.stringify({
+        model: OPUS_MODEL,
+        max_tokens: 16000,
+        messages: [{ role: 'user', content: prompt }],
+      }),
     });
 
-    let text = '';
-    for (const block of response.content) {
-      if (block.type === 'text') {
-        text += block.text;
-      }
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
     }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content || '';
 
     return text || currentHtml;
   } catch (error) {
