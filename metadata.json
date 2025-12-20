@@ -1,0 +1,5 @@
+{
+  "name": "MedGenius - Medical Education Artifacts",
+  "description": "Upload clinical notes, anatomy diagrams, or case studies to generate interactive medical education modules and presentations.",
+  "requestFramePermissions": []
+}

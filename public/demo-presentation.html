@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PresentGenius - Feature Demo</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <style>
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes slideInLeft { from { opacity: 0; transform: translateX(-50px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes slideInRight { from { opacity: 0; transform: translateX(50px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+    @keyframes typewriter { from { width: 0; } to { width: 100%; } }
+    @keyframes draw { from { stroke-dashoffset: 1000; } to { stroke-dashoffset: 0; } }
+    @keyframes highlight { 0% { background-color: transparent; } 50% { background-color: rgba(34, 211, 238, 0.3); } 100% { background-color: rgba(34, 211, 238, 0.1); } }
+    .animate-fadeIn { animation: fadeIn 0.6s ease-out forwards; }
+    .animate-slideInLeft { animation: slideInLeft 0.5s ease-out forwards; }
+    .animate-slideInRight { animation: slideInRight 0.5s ease-out forwards; }
+    .animate-pulse-custom { animation: pulse 2s ease-in-out infinite; }
+    .animate-highlight { animation: highlight 1s ease-out forwards; }
+    .slide { display: none; min-height: 100vh; }
+    .slide.active { display: flex; }
+    .delay-100 { animation-delay: 0.1s; opacity: 0; }
+    .delay-200 { animation-delay: 0.2s; opacity: 0; }
+    .delay-300 { animation-delay: 0.3s; opacity: 0; }
+    .delay-400 { animation-delay: 0.4s; opacity: 0; }
+    .delay-500 { animation-delay: 0.5s; opacity: 0; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white font-sans">
+  
+  <!-- Slide 1: Title -->
+  <section class="slide active flex-col items-center justify-center p-8" data-slide="0">
+    <div class="text-center max-w-4xl mx-auto">
+      <div class="animate-fadeIn mb-8">
+        <span class="text-7xl">🎓</span>
+      </div>
+      <h1 class="text-6xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent animate-fadeIn delay-100">
+        PresentGenius
+      </h1>
+      <p class="text-2xl text-zinc-400 mb-8 animate-fadeIn delay-200">
+        Medical Education Lecture Studio
+      </p>
+      <div class="flex flex-wrap justify-center gap-3 animate-fadeIn delay-300">
+        <span class="px-4 py-2 bg-cyan-500/20 text-cyan-400 rounded-full text-sm">AI-Powered</span>
+        <span class="px-4 py-2 bg-purple-500/20 text-purple-400 rounded-full text-sm">Board Questions</span>
+        <span class="px-4 py-2 bg-pink-500/20 text-pink-400 rounded-full text-sm">Live Sync</span>
+        <span class="px-4 py-2 bg-green-500/20 text-green-400 rounded-full text-sm">Animations</span>
+      </div>
+      <p class="text-zinc-600 mt-12 animate-fadeIn delay-400">Press → or click to continue</p>
+    </div>
+  </section>
+
+  <!-- Slide 2: Compact Input -->
+  <section class="slide flex-col items-center justify-center p-8" data-slide="1">
+    <div class="max-w-4xl mx-auto w-full">
+      <h2 class="text-4xl font-bold mb-8 text-center animate-fadeIn">⚡ Quick Input Mode</h2>
+      <div class="bg-zinc-900/80 rounded-2xl border border-zinc-800 p-6 animate-fadeIn delay-100">
+        <div class="mb-4">
+          <div class="bg-zinc-800 rounded-xl p-4 text-lg text-zinc-300">
+            Type your lecture topic and hit ⌘+Enter...
+          </div>
+        </div>
+        <div class="flex items-center gap-3 flex-wrap">
+          <div class="flex items-center gap-2 px-3 py-2 bg-zinc-800 rounded-lg">
+            <span class="text-sm text-zinc-400">Duration:</span>
+            <span class="text-cyan-400">🎤 30 min</span>
+          </div>
+          <div class="flex gap-1 px-2 py-1 bg-zinc-800 rounded-lg">
+            <span class="w-5 h-5 rounded-full bg-cyan-500"></span>
+            <span class="w-5 h-5 rounded-full bg-purple-500"></span>
+            <span class="w-5 h-5 rounded-full bg-green-500"></span>
+          </div>
+          <div class="flex bg-zinc-800 rounded-lg p-1">
+            <span class="px-2 py-1 bg-zinc-700 rounded text-sm">✨</span>
+            <span class="px-2 py-1 text-sm text-zinc-500">🧠</span>
+          </div>
+          <div class="flex-1"></div>
+          <button class="px-4 py-2 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-xl font-medium">
+            ✨ 25 Slides
+          </button>
+        </div>
+      </div>
+      <div class="mt-6 grid grid-cols-2 gap-4 animate-fadeIn delay-200">
+        <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700">
+          <h3 class="font-medium text-cyan-400 mb-2">Quick Mode</h3>
+          <p class="text-sm text-zinc-400">Single text input, smart defaults, instant generation</p>
+        </div>
+        <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700">
+          <h3 class="font-medium text-purple-400 mb-2">Advanced Mode</h3>
+          <p class="text-sm text-zinc-400">Template queue, custom themes, full control</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 3: Dual AI -->
+  <section class="slide flex-col items-center justify-center p-8" data-slide="2">
+    <div class="max-w-4xl mx-auto w-full">
+      <h2 class="text-4xl font-bold mb-8 text-center animate-fadeIn">🤖 Dual AI Providers</h2>
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-2xl p-6 border border-cyan-500/30 animate-slideInLeft delay-100">
+          <div class="text-4xl mb-4">✨</div>
+          <h3 class="text-2xl font-bold text-cyan-400 mb-2">Google Gemini</h3>
+          <p class="text-zinc-400 mb-4">gemini-3-pro-preview</p>
+          <ul class="space-y-2 text-sm text-zinc-300">
+            <li>• Excellent at structured content</li>
+            <li>• Fast generation speed</li>
+            <li>• Great with medical terminology</li>
+          </ul>
+        </div>
+        <div class="bg-gradient-to-br from-orange-500/20 to-amber-500/20 rounded-2xl p-6 border border-orange-500/30 animate-slideInRight delay-200">
+          <div class="text-4xl mb-4">🧠</div>
+          <h3 class="text-2xl font-bold text-orange-400 mb-2">Anthropic Claude</h3>
+          <p class="text-zinc-400 mb-4">claude-sonnet-4</p>
+          <ul class="space-y-2 text-sm text-zinc-300">
+            <li>• Nuanced clinical reasoning</li>
+            <li>• Detailed explanations</li>
+            <li>• Excellent teaching style</li>
+          </ul>
+        </div>
+      </div>
+      <p class="text-center text-zinc-500 mt-6 animate-fadeIn delay-300">Toggle between providers with one click • Same interface, different strengths</p>
+    </div>
+  </section>
+
+  <!-- Slide 4: Research Panel -->
+  <section class="slide flex-col items-center justify-center p-8" data-slide="3">
+    <div class="max-w-4xl mx-auto w-full">
+      <h2 class="text-4xl font-bold mb-8 text-center animate-fadeIn">🔍 Perplexity Research</h2>
+      <div class="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden animate-fadeIn delay-100">
+        <div class="flex border-b border-zinc-800">
+          <button class="flex-1 px-4 py-3 bg-cyan-500/10 text-cyan-400 border-b-2 border-cyan-400">📚 Evidence</button>
+          <button class="flex-1 px-4 py-3 text-zinc-500">✓ Guidelines</button>
+          <button class="flex-1 px-4 py-3 text-zinc-500">🔬 DDx</button>
+          <button class="flex-1 px-4 py-3 text-zinc-500">💊 Drug</button>
+        </div>
+        <div class="p-4">
+          <div class="flex gap-2 mb-4">
+            <input type="text" value="COPD exacerbation management" class="flex-1 px-4 py-2 bg-zinc-800 rounded-lg text-white" readonly>
+            <button class="px-4 py-2 bg-cyan-500 rounded-lg">🔍</button>
+          </div>
+          <div class="bg-zinc-800/50 rounded-lg p-4 text-sm text-zinc-300 max-h-48 overflow-hidden">
+            <p class="mb-2"><strong class="text-cyan-400">Key Points:</strong></p>
+            <ul class="space-y-1 text-zinc-400">
+              <li>• GOLD 2024 guidelines recommend bronchodilators + systemic corticosteroids</li>
+              <li>• Antibiotics if increased dyspnea, sputum volume, or purulence</li>
+              <li>• NIV for respiratory acidosis (pH < 7.35)</li>
+              <li>• Short course steroids (5 days) as effective as longer courses</li>
+            </ul>
+          </div>
+          <button class="w-full mt-4 py-2 bg-cyan-500/20 text-cyan-400 rounded-lg text-sm">
+            Insert into Lecture →
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 5: Board Questions -->
+  <section class="slide flex-col items-center justify-center p-8" data-slide="4">
+    <div class="max-w-4xl mx-auto w-full">
+      <h2 class="text-4xl font-bold mb-8 text-center animate-fadeIn">❓ Board Question Generator</h2>
+      <div class="bg-zinc-900 rounded-2xl border border-zinc-800 p-6 animate-fadeIn delay-100">
+        <div class="flex gap-2 mb-4">
+          <select class="px-3 py-2 bg-zinc-800 rounded-lg text-sm">
+            <option>5 Questions</option>
+          </select>
+          <select class="px-3 py-2 bg-zinc-800 rounded-lg text-sm">
+            <option>Mixed Difficulty</option>
+          </select>
+          <select class="px-3 py-2 bg-zinc-800 rounded-lg text-sm">
+            <option>Step 2 Style</option>
+          </select>
+        </div>
+        
+        <div class="bg-zinc-800/50 rounded-xl p-4 mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="px-2 py-1 bg-purple-500/20 text-purple-400 rounded text-xs">Q1</span>
+            <span class="text-xs text-zinc-500">Medium</span>
+          </div>
+          <p class="text-sm text-zinc-300 mb-4">
+            A 68-year-old man with COPD presents with worsening dyspnea, increased sputum production, and fever. His oxygen saturation is 88% on room air. ABG shows pH 7.32, PaCO2 55 mmHg...
+          </p>
+          <div class="space-y-2">
+            <div class="p-2 bg-zinc-700/50 rounded-lg text-sm hover:bg-zinc-700 cursor-pointer">A. Start IV antibiotics only</div>
+            <div class="p-2 bg-green-500/20 border border-green-500/50 rounded-lg text-sm text-green-300">B. Initiate non-invasive ventilation ✓</div>
+            <div class="p-2 bg-zinc-700/50 rounded-lg text-sm line-through text-zinc-500">C. Immediate intubation</div>
+            <div class="p-2 bg-zinc-700/50 rounded-lg text-sm">D. High-flow nasal cannula</div>
+          </div>
+        </div>
+        <div class="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-sm">
+          <span class="text-green-400 font-medium">Teaching Point:</span>
+          <span class="text-zinc-300"> NIV is first-line for COPD with respiratory acidosis (pH 7.25-7.35)</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 6: Presentation Mode -->
+  <section class="slide flex-col items-center justify-center p-8" data-slide="5">
+    <div class="max-w-4xl mx-auto w-full">
+      <h2 class="text-4xl font-bold mb-8 text-center animate-fadeIn">🎬 Presentation Mode</h2>
+      <div class="bg-black rounded-2xl border border-zinc-800 overflow-hidden animate-fadeIn delay-100">
+        <div class="aspect-video bg-gradient-to-br from-zinc-900 to-zinc-800 flex items-center justify-center relative">
+          <div class="text-center">
+            <div class="text-6xl mb-4">📊</div>
+            <h3 class="text-2xl font-bold">Your Presentation Here</h3>
+            <p class="text-zinc-500">Full-screen immersive experience</p>
+          </div>
+          
+          <!-- Controls overlay -->
+          <div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80">
+            <div class="flex items-center justify-between text-sm">
+              <div class="flex items-center gap-4">
+                <span class="text-zinc-400">⏱️ 12:34</span>
+                <span class="text-zinc-400">5 / 25</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <button class="p-2 hover:bg-white/10 rounded">⏮️</button>
+                <button class="p-3 bg-white/10 rounded-full">▶️</button>
+                <button class="p-2 hover:bg-white/10 rounded">⏭️</button>
+              </div>
+              <div class="flex items-center gap-2">
+                <button class="p-2 hover:bg-white/10 rounded">✏️</button>
+                <button class="p-2 hover:bg-white/10 rounded bg-cyan-500/20 text-cyan-400">📱</button>
+                <button class="p-2 hover:bg-white/10 rounded">⛶</button>
+              </div>
+            </div>
+            <div class="h-1 bg-zinc-700 rounded-full mt-3">
+              <div class="h-full w-1/5 bg-cyan-500 rounded-full"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="grid grid-cols-4 gap-3 mt-4 text-center text-xs animate-fadeIn delay-200">
+        <div class="bg-zinc-800/50 rounded-lg p-2"><span class="text-zinc-400">←→</span><br>Navigate</div>
+        <div class="bg-zinc-800/50 rounded-lg p-2"><span class="text-zinc-400">P</span><br>Play/Pause</div>
+        <div class="bg-zinc-800/50 rounded-lg p-2"><span class="text-zinc-400">D</span><br>Draw</div>
+        <div class="bg-zinc-800/50 rounded-lg p-2"><span class="text-zinc-400">Q</span><br>QR Code</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 7: Phone Follow-Along -->
+  <section class="slide flex-col items-center justify-center p-8" data-slide="6">
+    <div class="max-w-4xl mx-auto w-full">
+      <h2 class="text-4xl font-bold mb-8 text-center animate-fadeIn">📱 Phone Follow-Along</h2>
+      <div class="grid md:grid-cols-2 gap-8 items-center">
+        <div class="animate-slideInLeft delay-100">
+          <div class="bg-white p-6 rounded-2xl inline-block">
+            <div class="w-48 h-48 bg-zinc-100 flex items-center justify-center">
+              <div class="grid grid-cols-5 gap-1">
+                <!-- Simplified QR pattern -->
+                <div class="w-8 h-8 bg-black"></div><div class="w-8 h-8 bg-white border border-black"></div><div class="w-8 h-8 bg-black"></div><div class="w-8 h-8 bg-white border border-black"></div><div class="w-8 h-8 bg-black"></div>
+                <div class="w-8 h-8 bg-white border border-black"></div><div class="w-8 h-8 bg-black"></div><div class="w-8 h-8 bg-white border border-black"></div><div class="w-8 h-8 bg-black"></div><div class="w-8 h-8 bg-white border border-black"></div>
+                <div class="w-8 h-8 bg-black"></div><div class="w-8 h-8 bg-white border border-black"></div><div class="w-8 h-8 bg-black"></div><div class="w-8 h-8 bg-white border border-black"></div><div class="w-8 h-8 bg-black"></div>
+                <div class="w-8 h-8 bg-white border border-black"></div><div class="w-8 h-8 bg-black"></div><div class="w-8 h-8 bg-white border border-black"></div><div class="w-8 h-8 bg-black"></div><div class="w-8 h-8 bg-white border border-black"></div>
+                <div class="w-8 h-8 bg-black"></div><div class="w-8 h-8 bg-white border border-black"></div><div class="w-8 h-8 bg-black"></div><div class="w-8 h-8 bg-white border border-black"></div><div class="w-8 h-8 bg-black"></div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-4 text-center">
+            <p class="text-3xl font-mono font-bold tracking-widest">XK7P2M</p>
+            <p class="text-zinc-500 text-sm mt-1">Session Code</p>
+          </div>
+        </div>
+        <div class="animate-slideInRight delay-200">
+          <div class="bg-zinc-900 rounded-3xl border-4 border-zinc-700 p-2 max-w-[280px] mx-auto">
+            <div class="bg-zinc-950 rounded-2xl overflow-hidden">
+              <div class="bg-zinc-800 px-4 py-2 flex items-center justify-between">
+                <span class="text-green-400 text-xs">● Connected</span>
+                <span class="text-xs text-zinc-400">5/25</span>
+              </div>
+              <div class="p-4 space-y-3">
+                <div class="text-center py-2">
+                  <span class="px-3 py-1 bg-cyan-500/20 text-cyan-400 rounded-full text-sm">Slide 5</span>
+                </div>
+                <h3 class="font-bold">COPD Exacerbation</h3>
+                <div class="space-y-2">
+                  <div class="flex items-start gap-2 p-2 bg-zinc-800 rounded-lg text-xs">
+                    <span class="text-cyan-400">✓</span>
+                    <span>Bronchodilators first-line</span>
+                  </div>
+                  <div class="flex items-start gap-2 p-2 bg-zinc-800 rounded-lg text-xs">
+                    <span class="text-cyan-400">✓</span>
+                    <span>Steroids for 5 days</span>
+                  </div>
+                  <div class="p-2 bg-zinc-800 rounded-lg text-xs">
+                    <p class="text-zinc-400 mb-1">Fill in:</p>
+                    <p>NIV indicated when pH < _____</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 8: Animation Routines -->
+  <section class="slide flex-col items-center justify-center p-8" data-slide="7">
+    <div class="max-w-4xl mx-auto w-full">
+      <h2 class="text-4xl font-bold mb-8 text-center animate-fadeIn">🎬 Animation Routines</h2>
+      <div class="grid md:grid-cols-2 gap-4 animate-fadeIn delay-100">
+        <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700 hover:border-cyan-500/50 transition-all cursor-pointer">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xl">📝</span>
+            <span class="font-medium">Progressive Reveal</span>
+          </div>
+          <p class="text-sm text-zinc-500">Bullets appear one at a time on click</p>
+        </div>
+        <div class="bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl p-4 border border-purple-500/50">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xl">❓</span>
+            <span class="font-medium text-purple-300">Board Question Reveal</span>
+          </div>
+          <p class="text-sm text-zinc-400">Stem → Options → Timer → Answer</p>
+        </div>
+        <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700 hover:border-cyan-500/50 transition-all cursor-pointer">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xl">🏥</span>
+            <span class="font-medium">Case Progression</span>
+          </div>
+          <p class="text-sm text-zinc-500">CC → HPI → PE → Labs → Dx → Tx</p>
+        </div>
+        <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700 hover:border-cyan-500/50 transition-all cursor-pointer">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xl">🔍</span>
+            <span class="font-medium">Differential Build</span>
+          </div>
+          <p class="text-sm text-zinc-500">Broad → Narrow with strikethrough</p>
+        </div>
+        <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700 hover:border-cyan-500/50 transition-all cursor-pointer">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xl">🔀</span>
+            <span class="font-medium">Algorithm Walk</span>
+          </div>
+          <p class="text-sm text-zinc-500">Step through flowchart with highlights</p>
+        </div>
+        <div class="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700 hover:border-cyan-500/50 transition-all cursor-pointer">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xl">🔥</span>
+            <span class="font-medium">Rapid Fire</span>
+          </div>
+          <p class="text-sm text-zinc-500">Auto-advance every 10 seconds</p>
+        </div>
+      </div>
+      <div class="mt-6 text-center animate-fadeIn delay-200">
+        <p class="text-zinc-400">12 animation effects • 5 trigger types • Custom timeline editor</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 9: Printables -->
+  <section class="slide flex-col items-center justify-center p-8" data-slide="8">
+    <div class="max-w-4xl mx-auto w-full">
+      <h2 class="text-4xl font-bold mb-8 text-center animate-fadeIn">🖨️ Printable Materials</h2>
+      <p class="text-center text-zinc-400 mb-8 animate-fadeIn delay-100">Generate alongside your presentation</p>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-4 text-center animate-fadeIn delay-100">
+          <div class="text-3xl mb-2">📄</div>
+          <div class="text-sm font-medium text-cyan-400">One-Page Handout</div>
+        </div>
+        <div class="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4 text-center animate-fadeIn delay-200">
+          <div class="text-3xl mb-2">📖</div>
+          <div class="text-sm font-medium text-purple-400">Study Guide</div>
+        </div>
+        <div class="bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-center animate-fadeIn delay-300">
+          <div class="text-3xl mb-2">✏️</div>
+          <div class="text-sm font-medium text-green-400">Follow-Along</div>
+        </div>
+        <div class="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4 text-center animate-fadeIn delay-400">
+          <div class="text-3xl mb-2">💊</div>
+          <div class="text-sm font-medium text-orange-400">Fast Facts</div>
+        </div>
+        <div class="bg-pink-500/10 border border-pink-500/30 rounded-xl p-4 text-center animate-fadeIn delay-500">
+          <div class="text-3xl mb-2">❓</div>
+          <div class="text-sm font-medium text-pink-400">Board Qs</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 10: Summary -->
+  <section class="slide flex-col items-center justify-center p-8" data-slide="9">
+    <div class="max-w-4xl mx-auto w-full text-center">
+      <h2 class="text-4xl font-bold mb-8 animate-fadeIn">🚀 Everything You Need</h2>
+      <div class="grid md:grid-cols-3 gap-6 mb-8">
+        <div class="animate-fadeIn delay-100">
+          <div class="text-4xl mb-3">⚡</div>
+          <h3 class="font-bold text-lg mb-2">Create Fast</h3>
+          <p class="text-sm text-zinc-400">Quick input with smart defaults, or full control with templates</p>
+        </div>
+        <div class="animate-fadeIn delay-200">
+          <div class="text-4xl mb-3">🔬</div>
+          <h3 class="font-bold text-lg mb-2">Evidence-Based</h3>
+          <p class="text-sm text-zinc-400">Perplexity research, guidelines, and board-style questions built in</p>
+        </div>
+        <div class="animate-fadeIn delay-300">
+          <div class="text-4xl mb-3">🎯</div>
+          <h3 class="font-bold text-lg mb-2">Engage Learners</h3>
+          <p class="text-sm text-zinc-400">Live phone sync, animations, and interactive elements</p>
+        </div>
+      </div>
+      <div class="animate-fadeIn delay-400">
+        <a href="/" class="inline-block px-8 py-4 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-xl font-bold text-lg hover:shadow-lg hover:shadow-cyan-500/25 transition-all">
+          Start Creating →
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Navigation -->
+  <div class="fixed bottom-4 left-1/2 transform -translate-x-1/2 flex items-center gap-4 bg-zinc-900/90 backdrop-blur px-4 py-2 rounded-full border border-zinc-800">
+    <button onclick="prevSlide()" class="p-2 hover:bg-zinc-800 rounded-full">←</button>
+    <span id="slideCounter" class="text-sm text-zinc-400 min-w-[60px] text-center">1 / 10</span>
+    <button onclick="nextSlide()" class="p-2 hover:bg-zinc-800 rounded-full">→</button>
+  </div>
+
+  <script>
+    let currentSlide = 0;
+    const slides = document.querySelectorAll('.slide');
+    const totalSlides = slides.length;
+
+    function showSlide(index) {
+      slides.forEach((slide, i) => {
+        slide.classList.remove('active');
+        if (i === index) {
+          slide.classList.add('active');
+          // Re-trigger animations
+          slide.querySelectorAll('[class*="animate-"]').forEach(el => {
+            el.style.animation = 'none';
+            el.offsetHeight; // Trigger reflow
+            el.style.animation = null;
+          });
+        }
+      });
+      document.getElementById('slideCounter').textContent = `${index + 1} / ${totalSlides}`;
+    }
+
+    function nextSlide() {
+      currentSlide = Math.min(currentSlide + 1, totalSlides - 1);
+      showSlide(currentSlide);
+    }
+
+    function prevSlide() {
+      currentSlide = Math.max(currentSlide - 1, 0);
+      showSlide(currentSlide);
+    }
+
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault();
+        nextSlide();
+      } else if (e.key === 'ArrowLeft') {
+        prevSlide();
+      }
+    });
+
+    // Click navigation
+    document.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'INPUT') {
+        if (e.clientX > window.innerWidth / 2) {
+          nextSlide();
+        } else {
+          prevSlide();
+        }
+      }
+    });
+
+    // Initialize
+    showSlide(0);
+  </script>
+</body>
+</html>
