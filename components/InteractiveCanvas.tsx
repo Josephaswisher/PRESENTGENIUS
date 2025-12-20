@@ -10,6 +10,8 @@ import {
   TrashIcon,
   ChevronRightIcon,
   ChevronDownIcon,
+  ChevronDoubleLeftIcon,
+  ChevronDoubleRightIcon,
   LightBulbIcon,
   AcademicCapIcon,
   QuestionMarkCircleIcon,
@@ -20,7 +22,6 @@ import {
   PaperAirplaneIcon,
   ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import { generateWithProvider, AIProvider } from '../services/ai-provider';
 import { searchMedicalEvidence, getLatestGuidelines } from '../services/perplexity';
 import { 
@@ -158,6 +159,10 @@ export const InteractiveCanvas: React.FC<Props> = ({
   const [scraperStatus, setScraperStatus] = useState<ScraperStatus | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // Panel collapse states
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -707,11 +712,11 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
         )}
       </div>
 
-      {/* Main Content - 3 Column Layout with Resizable Panels */}
-      <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
+      {/* Main Content - 3 Column Layout */}
+      <div className="flex-1 overflow-hidden flex">
         {/* Left Panel - Setup & Research */}
-        <Panel defaultSize={20} minSize={15} maxSize={35}>
-          <div className="h-full border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden">
+        <div className={`${leftPanelCollapsed ? 'w-0' : 'w-72'} transition-all duration-300 flex-shrink-0 relative`}>
+          <div className={`h-full border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${leftPanelCollapsed ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}>
           <div className="p-4 space-y-4 overflow-y-auto flex-1">
             {/* Topic */}
             <div>
@@ -849,14 +854,23 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
             )}
           </div>
           </div>
-        </Panel>
+        </div>
 
-        {/* Resize Handle */}
-        <PanelResizeHandle className="w-1 bg-zinc-800 hover:bg-cyan-500/50 transition-colors cursor-col-resize" />
+        {/* Left Toggle Button */}
+        <button
+          onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+          className="flex-shrink-0 w-6 bg-zinc-800 hover:bg-cyan-500/30 border-x border-zinc-700 flex items-center justify-center transition-colors group"
+          title={leftPanelCollapsed ? 'Show Setup Panel' : 'Hide Setup Panel'}
+        >
+          {leftPanelCollapsed ? (
+            <ChevronDoubleRightIcon className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400" />
+          ) : (
+            <ChevronDoubleLeftIcon className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400" />
+          )}
+        </button>
 
         {/* Center Panel - Sections Editor */}
-        <Panel defaultSize={55} minSize={30}>
-          <div className="h-full overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 min-w-0">
           {doc.sections.length === 0 ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center max-w-md">
@@ -1017,15 +1031,24 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
               </button>
             </div>
           )}
-          </div>
-        </Panel>
+        </div>
 
-        {/* Resize Handle */}
-        <PanelResizeHandle className="w-1 bg-zinc-800 hover:bg-purple-500/50 transition-colors cursor-col-resize" />
+        {/* Right Toggle Button */}
+        <button
+          onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+          className="flex-shrink-0 w-6 bg-zinc-800 hover:bg-purple-500/30 border-x border-zinc-700 flex items-center justify-center transition-colors group"
+          title={rightPanelCollapsed ? 'Show Chat Panel' : 'Hide Chat Panel'}
+        >
+          {rightPanelCollapsed ? (
+            <ChevronDoubleLeftIcon className="w-4 h-4 text-zinc-500 group-hover:text-purple-400" />
+          ) : (
+            <ChevronDoubleRightIcon className="w-4 h-4 text-zinc-500 group-hover:text-purple-400" />
+          )}
+        </button>
 
         {/* Right Panel - Chat Assistant */}
-        <Panel defaultSize={25} minSize={15} maxSize={40}>
-          <div className="h-full border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden">
+        <div className={`${rightPanelCollapsed ? 'w-0' : 'w-80'} transition-all duration-300 flex-shrink-0`}>
+          <div className={`h-full border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${rightPanelCollapsed ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}>
           {/* Chat Header */}
           <div className="flex-shrink-0 p-3 border-b border-zinc-800">
             <div className="flex items-center gap-2">
@@ -1113,8 +1136,8 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
             </div>
           </div>
           </div>
-        </Panel>
-      </PanelGroup>
+        </div>
+      </div>
     </div>
   );
 };
