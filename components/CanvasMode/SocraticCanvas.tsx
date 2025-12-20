@@ -23,11 +23,33 @@ import {
 } from '@heroicons/react/24/outline';
 import { generateWithProvider } from '../../services/ai-provider';
 import { searchMedicalEvidence, getLatestGuidelines, getDifferentialDiagnosis } from '../../services/perplexity';
+import { 
+  searchUpToDate, 
+  searchMKSAP, 
+  searchPubMed,
+  aggregateSearch,
+  checkScraperHealth,
+  formatSearchResults,
+  getLoginStatus,
+  type ScraperSearchResponse 
+} from '../../services/medical-scrapers';
+
+// Research source types
+type ResearchSource = 'perplexity' | 'uptodate' | 'mksap' | 'pubmed' | 'all';
+
+const RESEARCH_SOURCES: { id: ResearchSource; name: string; icon: string; description: string }[] = [
+  { id: 'perplexity', name: 'Perplexity AI', icon: '🔮', description: 'AI-powered medical search' },
+  { id: 'uptodate', name: 'UpToDate', icon: '📚', description: 'Clinical decision support' },
+  { id: 'mksap', name: 'MKSAP 19', icon: '🩺', description: 'Board-style content' },
+  { id: 'pubmed', name: 'PubMed', icon: '📄', description: 'Primary literature' },
+  { id: 'all', name: 'All Sources', icon: '🔥', description: 'Aggregate search' },
+];
 
 // Types
 interface ResearchResult {
-  type: 'evidence' | 'guidelines' | 'differential';
+  type: 'evidence' | 'guidelines' | 'differential' | 'uptodate' | 'mksap';
   content: string;
+  source?: ResearchSource;
   keyPoints: string[];
   citations: string[];
 }

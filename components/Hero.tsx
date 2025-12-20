@@ -148,13 +148,42 @@ export const Hero: React.FC = () => {
 
       {/* Hero Text Content */}
       <div className="text-center relative z-10 max-w-6xl mx-auto px-4 pt-8">
+        {/* Brand Badge */}
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/20 mb-6">
+          <span className="text-cyan-400 font-semibold text-sm">PRESENTGENIUS</span>
+          <span className="text-zinc-500">•</span>
+          <span className="text-zinc-400 text-sm">By Dr. Joey Swisher</span>
+        </div>
+        
         <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tighter text-white mb-6 leading-[1.1]">
           Medical Education <br/>
           <span className="underline decoration-4 decoration-cyan-500 underline-offset-4 md:underline-offset-8 text-white">Reimagined</span>.
         </h1>
-        <p className="text-base sm:text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed font-light">
-          Gemini transforms clinical notes, textbooks, and anatomy sketches into interactive case studies, presentations, and resident training modules instantly.
+        
+        {/* Tagline */}
+        <p className="text-xl sm:text-2xl md:text-3xl font-light text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 mb-4 italic">
+          Unleash Your Imagination
         </p>
+        
+        <p className="text-base sm:text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed font-light">
+          Dual AI power (Gemini + Claude Opus) transforms clinical notes, textbooks, and research into interactive case studies, board-style presentations, and resident training modules instantly.
+        </p>
+        
+        {/* Feature Pills */}
+        <div className="flex flex-wrap justify-center gap-3 mt-6">
+          <span className="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-medium">
+            🔮 Perplexity Research
+          </span>
+          <span className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-medium">
+            📚 UpToDate Integration
+          </span>
+          <span className="px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-xs font-medium">
+            🩺 MKSAP 19 Content
+          </span>
+          <span className="px-3 py-1 rounded-full bg-green-500/10 border border-green-500/30 text-green-400 text-xs font-medium">
+            🔥 Dual AI Mode
+          </span>
+        </div>
       </div>
     </>
   );

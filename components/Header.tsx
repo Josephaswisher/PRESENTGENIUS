@@ -42,9 +42,14 @@ export const Header: React.FC<HeaderProps> = ({
 
         <div className="flex items-center gap-2">
           <span className="text-xl">🧬</span>
-          <span className="font-semibold text-zinc-100 hidden sm:inline">
-            VibePresenterPro
-          </span>
+          <div className="hidden sm:flex flex-col">
+            <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 text-sm leading-tight">
+              PRESENTGENIUS
+            </span>
+            <span className="text-[10px] text-zinc-500 leading-tight">
+              By Dr. Joey Swisher
+            </span>
+          </div>
         </div>
       </div>
 
