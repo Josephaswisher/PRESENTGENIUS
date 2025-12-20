@@ -6,14 +6,6 @@
   "installCommand": "npm install",
   "devCommand": "npm run dev",
   "regions": ["iad1"],
-  "env": {
-    "VITE_SUPABASE_URL": "@supabase_url",
-    "VITE_SUPABASE_ANON_KEY": "@supabase_anon_key",
-    "VITE_GEMINI_API_KEY": "@gemini_api_key",
-    "VITE_PERPLEXITY_API_KEY": "@perplexity_api_key",
-    "VITE_GOOGLE_CLIENT_ID": "@google_client_id",
-    "VITE_OPENROUTER_API_KEY": "@openrouter_api_key"
-  },
   "headers": [
     {
       "source": "/(.*)",
