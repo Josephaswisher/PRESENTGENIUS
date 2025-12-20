@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:full": "python3 studio/scraper/scraper_service.py & vite",
+    "scraper": "python3 studio/scraper/scraper_service.py",
     "build": "vite build",
     "preview": "vite preview"
   },
