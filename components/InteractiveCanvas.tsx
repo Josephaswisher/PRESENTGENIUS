@@ -20,6 +20,7 @@ import {
   PaperAirplaneIcon,
   ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import { generateWithProvider, AIProvider } from '../services/ai-provider';
 import { searchMedicalEvidence, getLatestGuidelines } from '../services/perplexity';
 import { 
@@ -119,7 +120,7 @@ const RESEARCH_SOURCES = [
 ];
 
 const AI_PROVIDERS: { id: AIProvider; name: string; icon: string }[] = [
-  { id: 'gemini', name: 'Gemini 2.5', icon: '💎' },
+  { id: 'gemini', name: 'Gemini 2.0 Flash', icon: '⚡' },
   { id: 'opus', name: 'Claude Opus', icon: '👑' },
   { id: 'claude', name: 'Claude Sonnet', icon: '🎭' },
 ];
@@ -706,10 +707,11 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
         )}
       </div>
 
-      {/* Main Content - 3 Column Layout */}
-      <div className="flex-1 overflow-hidden flex">
+      {/* Main Content - 3 Column Layout with Resizable Panels */}
+      <PanelGroup orientation="horizontal" className="flex-1 overflow-hidden">
         {/* Left Panel - Setup & Research */}
-        <div className="w-72 border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden">
+        <Panel defaultSize={20} minSize={15} maxSize={35}>
+          <div className="h-full border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden">
           <div className="p-4 space-y-4 overflow-y-auto flex-1">
             {/* Topic */}
             <div>
@@ -846,10 +848,15 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
               </div>
             )}
           </div>
-        </div>
+          </div>
+        </Panel>
+
+        {/* Resize Handle */}
+        <PanelResizeHandle className="w-1 bg-zinc-800 hover:bg-cyan-500/50 transition-colors cursor-col-resize" />
 
         {/* Center Panel - Sections Editor */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <Panel defaultSize={55} minSize={30}>
+          <div className="h-full overflow-y-auto p-4">
           {doc.sections.length === 0 ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center max-w-md">
@@ -1010,10 +1017,15 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
               </button>
             </div>
           )}
-        </div>
+          </div>
+        </Panel>
+
+        {/* Resize Handle */}
+        <PanelResizeHandle className="w-1 bg-zinc-800 hover:bg-purple-500/50 transition-colors cursor-col-resize" />
 
         {/* Right Panel - Chat Assistant */}
-        <div className="w-80 border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden">
+        <Panel defaultSize={25} minSize={15} maxSize={40}>
+          <div className="h-full border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden">
           {/* Chat Header */}
           <div className="flex-shrink-0 p-3 border-b border-zinc-800">
             <div className="flex items-center gap-2">
@@ -1100,8 +1112,9 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
               </button>
             </div>
           </div>
-        </div>
-      </div>
+          </div>
+        </Panel>
+      </PanelGroup>
     </div>
   );
 };

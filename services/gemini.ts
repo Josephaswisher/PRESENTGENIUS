@@ -8,8 +8,8 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Activity, LearnerLevel, getActivityById, getLearnerLevelById } from '../data/activities';
 
-// Using Gemini 2.5 Pro for complex clinical reasoning and coding tasks.
-const GEMINI_MODEL = 'gemini-2.5-pro';
+// Using Gemini 2.0 Flash for fast, high-quality generation
+const GEMINI_MODEL = 'gemini-2.0-flash';
 
 const getApiKey = () => {
   const key = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.API_KEY;
