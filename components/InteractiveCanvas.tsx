@@ -120,7 +120,7 @@ const RESEARCH_SOURCES = [
 ];
 
 const AI_PROVIDERS: { id: AIProvider; name: string; icon: string }[] = [
-  { id: 'gemini', name: 'Gemini 2.0 Flash', icon: '⚡' },
+  { id: 'gemini', name: 'Gemini 3 Flash', icon: '⚡' },
   { id: 'opus', name: 'Claude Opus', icon: '👑' },
   { id: 'claude', name: 'Claude Sonnet', icon: '🎭' },
 ];

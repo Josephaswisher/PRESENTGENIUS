@@ -45,8 +45,8 @@ export const PROVIDERS: ProviderInfo[] = [
   },
   {
     id: 'gemini',
-    name: 'Gemini 2.0 Flash',
-    model: 'gemini-2.0-flash',
+    name: 'Gemini 3 Flash',
+    model: 'gemini-3.0-flash',
     icon: '⚡',
     color: 'from-blue-500 to-cyan-500',
   },
@@ -66,7 +66,7 @@ export const PROVIDERS: ProviderInfo[] = [
   },
   {
     id: 'dual',
-    name: 'Dual AI (Gemini 2.0 + Opus)',
+    name: 'Dual AI (Gemini 3 + Opus)',
     model: 'dual-gemini-opus',
     icon: '🔥',
     color: 'from-cyan-500 via-purple-500 to-pink-500',

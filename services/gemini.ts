@@ -8,8 +8,8 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Activity, LearnerLevel, getActivityById, getLearnerLevelById } from '../data/activities';
 
-// Using Gemini 2.0 Flash for fast, high-quality generation
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// Gemini 3 Flash - fast, cost-effective, excellent for agentic workflows and UI generation
+const GEMINI_MODEL = 'gemini-3.0-flash';
 
 const getApiKey = () => {
   const key = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.API_KEY;
