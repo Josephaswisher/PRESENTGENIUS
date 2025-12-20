@@ -8,10 +8,18 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Activity, LearnerLevel, getActivityById, getLearnerLevelById } from '../data/activities';
 
-// Using Gemini 3.0 Pro for complex clinical reasoning and coding tasks.
-const GEMINI_MODEL = 'gemini-2.5-pro'; // Google's latest - gemini-3-pro-preview coming soon
+// Using Gemini 2.5 Pro for complex clinical reasoning and coding tasks.
+const GEMINI_MODEL = 'gemini-2.5-pro';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getApiKey = () => {
+  const key = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.API_KEY;
+  if (!key) {
+    throw new Error('VITE_GEMINI_API_KEY is not set');
+  }
+  return key;
+};
+
+const getAI = () => new GoogleGenAI({ apiKey: getApiKey() });
 
 // Base system instruction - enhanced for VibePresenterPro
 const BASE_SYSTEM_INSTRUCTION = `You are an expert Medical Education Technologist and Clinical Educator (MD/Dev).
@@ -152,7 +160,7 @@ export async function bringToLife(
   const systemInstruction = buildSystemInstruction(activityId, learnerLevel);
 
   try {
-    const response: GenerateContentResponse = await ai.models.generateContent({
+    const response: GenerateContentResponse = await getAI().models.generateContent({
       model: GEMINI_MODEL,
       contents: {
         parts: parts
@@ -194,7 +202,7 @@ Return ONLY the raw HTML code. Do not wrap it in markdown.`
     }];
 
     try {
-        const response: GenerateContentResponse = await ai.models.generateContent({
+        const response: GenerateContentResponse = await getAI().models.generateContent({
             model: GEMINI_MODEL,
             contents: { parts },
             config: {
