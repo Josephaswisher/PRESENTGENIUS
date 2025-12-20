@@ -5,7 +5,7 @@
 import { LearnerLevel, getActivityById, getLearnerLevelById } from '../data/activities';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const CLAUDE_MODEL = 'anthropic/claude-sonnet-4'; // OpenRouter model name
+const CLAUDE_MODEL = 'anthropic/claude-sonnet-4.5'; // Claude Sonnet 4.5 via OpenRouter
 
 const getApiKey = () => {
   return import.meta.env.VITE_OPENROUTER_API_KEY || import.meta.env.VITE_ANTHROPIC_API_KEY;

@@ -9,7 +9,7 @@ import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Activity, LearnerLevel, getActivityById, getLearnerLevelById } from '../data/activities';
 
 // Using Gemini 3.0 Pro for complex clinical reasoning and coding tasks.
-const GEMINI_MODEL = 'gemini-2.5-pro';
+const GEMINI_MODEL = 'gemini-2.5-pro'; // Google's latest - gemini-3-pro-preview coming soon
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
