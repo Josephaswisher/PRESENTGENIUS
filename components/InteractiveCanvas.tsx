@@ -715,8 +715,8 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
       {/* Main Content - 3 Column Layout */}
       <div className="flex-1 overflow-hidden flex">
         {/* Left Panel - Setup & Research */}
-        <div className={`${leftPanelCollapsed ? 'w-0' : 'w-72'} transition-all duration-300 flex-shrink-0 relative`}>
-          <div className={`h-full border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${leftPanelCollapsed ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}>
+        <div className={`${leftPanelCollapsed ? 'w-0 overflow-hidden' : 'w-72'} transition-all duration-300 flex-shrink-0 relative`}>
+          <div className={`h-full w-72 border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${leftPanelCollapsed ? 'invisible' : 'visible'}`}>
           <div className="p-4 space-y-4 overflow-y-auto flex-1">
             {/* Topic */}
             <div>
@@ -1047,8 +1047,8 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
         </button>
 
         {/* Right Panel - Chat Assistant */}
-        <div className={`${rightPanelCollapsed ? 'w-0' : 'w-80'} transition-all duration-300 flex-shrink-0`}>
-          <div className={`h-full border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${rightPanelCollapsed ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}>
+        <div className={`${rightPanelCollapsed ? 'w-0 overflow-hidden' : 'w-80'} transition-all duration-300 flex-shrink-0`}>
+          <div className={`h-full w-80 border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${rightPanelCollapsed ? 'invisible' : 'visible'}`}>
           {/* Chat Header */}
           <div className="flex-shrink-0 p-3 border-b border-zinc-800">
             <div className="flex items-center gap-2">
