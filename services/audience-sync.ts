@@ -182,6 +182,14 @@ export async function leaveSession() {
   }
 }
 
+/**
+ * Generate QR code URL for session
+ */
+export function getFollowAlongUrl(code: string): string {
+  const baseUrl = window.location.origin;
+  return `${baseUrl}/follow/${code}`;
+}
+
 // --------------------------------------------------------------------------
 // Event Listeners
 // --------------------------------------------------------------------------
