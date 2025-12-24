@@ -25,21 +25,21 @@ const App: React.FC = () => {
   const [isRefining, setIsRefining] = useState(false);
   const [history, setHistory] = useState<Creation[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  
+
   // AI Provider state
   const [currentProvider, setCurrentProvider] = useState<AIProvider>('gemini');
-  
+
   // Generation progress state
   const [genPhase, setGenPhase] = useState<GenerationPhase>('starting');
   const [genProgress, setGenProgress] = useState(0);
   const [genMessage, setGenMessage] = useState('');
-  
+
   // Presentation mode
   const [showPresentation, setShowPresentation] = useState(false);
-  
+
   // Sidebar tab in workspace
   const [sidebarTab, setSidebarTab] = useState<'chat' | 'research' | 'questions'>('research');
-  
+
   // Printables panel
   const [showPrintables, setShowPrintables] = useState(false);
 
@@ -103,9 +103,9 @@ const App: React.FC = () => {
 
   // Main generation handler
   const handleGenerate = async (
-    promptText: string, 
-    files: File[] = [], 
-    options: GenerationOptions = {}, 
+    promptText: string,
+    files: File[] = [],
+    options: GenerationOptions = {},
     provider: AIProvider = 'gemini'
   ) => {
     setIsGenerating(true);
@@ -123,9 +123,9 @@ const App: React.FC = () => {
       }
 
       const html = await generateWithProvider(
-        provider, 
-        promptText, 
-        processedFiles, 
+        provider,
+        promptText,
+        processedFiles,
         options,
         (phase, progress, message) => {
           setGenPhase(phase);
@@ -133,14 +133,14 @@ const App: React.FC = () => {
           setGenMessage(message || '');
         }
       );
-      
+
       if (html) {
-        const previewImage = processedFiles.length > 0 
-          ? `data:${processedFiles[0].mimeType};base64,${processedFiles[0].base64}` 
+        const previewImage = processedFiles.length > 0
+          ? `data:${processedFiles[0].mimeType};base64,${processedFiles[0].base64}`
           : undefined;
 
-        const creationName = files.length > 0 
-          ? files[0].name + (files.length > 1 ? ` +${files.length-1}` : '') 
+        const creationName = files.length > 0
+          ? files[0].name + (files.length > 1 ? ` +${files.length - 1}` : '')
           : promptText.slice(0, 50) || 'New Presentation';
 
         const newCreation: Creation = {
@@ -150,7 +150,7 @@ const App: React.FC = () => {
           originalImage: previewImage,
           timestamp: new Date(),
         };
-        
+
         setActiveCreation(newCreation);
         setHistory(prev => [newCreation, ...prev]);
 
@@ -175,9 +175,13 @@ const App: React.FC = () => {
           backupPresentation(creationName, html, promptText);
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Generation failed:", error);
-      alert("Something went wrong. Please try again.");
+      if (error.message && (error.message.includes("VITE_GEMINI_API_KEY") || error.message.includes("API key"))) {
+        alert("Missing API Key!\n\nPlease check your .env file and ensure VITE_GEMINI_API_KEY or VITE_ANTHROPIC_API_KEY is set.\n\nSee .env.example for details.");
+      } else {
+        alert(`Generation failed: ${error.message || "Something went wrong. Please try again."}`);
+      }
     } finally {
       setIsGenerating(false);
       setGenProgress(100);
@@ -273,14 +277,14 @@ Generate an engaging, visually polished presentation.`;
       try {
         const json = event.target?.result as string;
         const parsed = JSON.parse(json);
-        
+
         if (parsed.html && parsed.name) {
           const importedCreation: Creation = {
             ...parsed,
             timestamp: new Date(parsed.timestamp || Date.now()),
             id: parsed.id || crypto.randomUUID()
           };
-          
+
           setHistory(prev => {
             const exists = prev.some(c => c.id === importedCreation.id);
             return exists ? prev : [importedCreation, ...prev];
@@ -301,14 +305,14 @@ Generate an engaging, visually polished presentation.`;
 
   return (
     <div className="h-[100dvh] bg-zinc-950 bg-dot-grid text-zinc-50 selection:bg-blue-500/30 overflow-hidden relative flex flex-col">
-      
+
       {/* Landing / Interactive Canvas View */}
-      <div 
+      <div
         className={`
           absolute inset-0 z-10 flex flex-col overflow-hidden
           transition-all duration-700 cubic-bezier(0.4, 0, 0.2, 1)
-          ${isWorkspaceActive 
-            ? 'opacity-0 scale-95 pointer-events-none translate-y-8' 
+          ${isWorkspaceActive
+            ? 'opacity-0 scale-95 pointer-events-none translate-y-8'
             : 'opacity-100 scale-100 translate-y-0'
           }
         `}
@@ -319,7 +323,7 @@ Generate an engaging, visually polished presentation.`;
           currentProvider={currentProvider}
           onProviderChange={setCurrentProvider}
         />
-        
+
         {/* History Bar at Bottom */}
         <div className="flex-shrink-0 border-t border-zinc-800 bg-zinc-900/80 backdrop-blur-xl">
           <div className="px-4 py-3">
@@ -329,12 +333,12 @@ Generate an engaging, visually polished presentation.`;
       </div>
 
       {/* Workspace View (Chat + Preview) */}
-      <div 
+      <div
         className={`
           fixed inset-0 z-40 flex bg-zinc-950
           transition-all duration-700 cubic-bezier(0.2, 0.8, 0.2, 1)
           ${isWorkspaceActive
-            ? 'opacity-100 translate-y-0' 
+            ? 'opacity-100 translate-y-0'
             : 'opacity-0 translate-y-full pointer-events-none'
           }
         `}
@@ -346,31 +350,28 @@ Generate an engaging, visually polished presentation.`;
             <div className="flex border-b border-zinc-800 shrink-0">
               <button
                 onClick={() => setSidebarTab('research')}
-                className={`flex-1 px-3 py-2.5 text-xs font-medium transition-all ${
-                  sidebarTab === 'research' 
-                    ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5' 
+                className={`flex-1 px-3 py-2.5 text-xs font-medium transition-all ${sidebarTab === 'research'
+                    ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
                     : 'text-zinc-500 hover:text-white'
-                }`}
+                  }`}
               >
                 🔍 Research
               </button>
               <button
                 onClick={() => setSidebarTab('chat')}
-                className={`flex-1 px-3 py-2.5 text-xs font-medium transition-all ${
-                  sidebarTab === 'chat' 
-                    ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5' 
+                className={`flex-1 px-3 py-2.5 text-xs font-medium transition-all ${sidebarTab === 'chat'
+                    ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
                     : 'text-zinc-500 hover:text-white'
-                }`}
+                  }`}
               >
                 💬 Refine
               </button>
               <button
                 onClick={() => setSidebarTab('questions')}
-                className={`flex-1 px-3 py-2.5 text-xs font-medium transition-all ${
-                  sidebarTab === 'questions' 
-                    ? 'text-purple-400 border-b-2 border-purple-400 bg-purple-500/5' 
+                className={`flex-1 px-3 py-2.5 text-xs font-medium transition-all ${sidebarTab === 'questions'
+                    ? 'text-purple-400 border-b-2 border-purple-400 bg-purple-500/5'
                     : 'text-zinc-500 hover:text-white'
-                }`}
+                  }`}
               >
                 ❓ Board Qs
               </button>
@@ -380,11 +381,11 @@ Generate an engaging, visually polished presentation.`;
             <div className="flex-1 overflow-hidden">
               {sidebarTab === 'research' && (
                 <div className="h-full overflow-y-auto p-3">
-                  <DrSwisherResearchPanel 
+                  <DrSwisherResearchPanel
                     compact
                     onInsertContent={(content, citations) => {
-                      const citationText = citations.length > 0 
-                        ? `\n\nSources:\n${citations.slice(0, 3).join('\n')}` 
+                      const citationText = citations.length > 0
+                        ? `\n\nSources:\n${citations.slice(0, 3).join('\n')}`
                         : '';
                       handleChatRefine(`Add this research content:\n\n${content}${citationText}`);
                       setSidebarTab('chat');
@@ -393,19 +394,19 @@ Generate an engaging, visually polished presentation.`;
                 </div>
               )}
               {sidebarTab === 'chat' && (
-                <ChatPanel 
-                  messages={chatMessages} 
+                <ChatPanel
+                  messages={chatMessages}
                   onSendMessage={handleChatRefine}
                   isProcessing={isRefining}
                 />
               )}
               {sidebarTab === 'questions' && (
                 <div className="h-full overflow-y-auto p-3">
-                  <BoardQuestionsPanel 
+                  <BoardQuestionsPanel
                     provider={currentProvider}
                     onInsertQuestions={(questions) => {
-                      const qText = questions.map((q, i) => 
-                        `Q${i+1}: ${q.stem}\n${q.options.map(o => `${o.letter}. ${o.text}`).join('\n')}`
+                      const qText = questions.map((q, i) =>
+                        `Q${i + 1}: ${q.stem}\n${q.options.map(o => `${o.letter}. ${o.text}`).join('\n')}`
                       ).join('\n\n');
                       handleChatRefine(`Add these board-style questions:\n\n${qText}`);
                       setSidebarTab('chat');
@@ -433,21 +434,21 @@ Generate an engaging, visually polished presentation.`;
       {/* Import Button */}
       {!isWorkspaceActive && (
         <div className="fixed bottom-20 right-4 z-50">
-          <button 
+          <button
             onClick={handleImportClick}
-            className="flex items-center gap-2 px-3 py-2 bg-zinc-800/80 backdrop-blur rounded-lg 
+            className="flex items-center gap-2 px-3 py-2 bg-zinc-800/80 backdrop-blur rounded-lg
                        text-zinc-400 hover:text-white transition-all text-sm"
             title="Import Artifact"
           >
             <ArrowUpTrayIcon className="w-4 h-4" />
             <span className="hidden sm:inline">Import</span>
           </button>
-          <input 
-            type="file" 
-            ref={importInputRef} 
-            onChange={handleImportFile} 
-            accept=".json" 
-            className="hidden" 
+          <input
+            type="file"
+            ref={importInputRef}
+            onChange={handleImportFile}
+            accept=".json"
+            className="hidden"
           />
         </div>
       )}

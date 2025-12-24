@@ -25,6 +25,84 @@ export interface ScraperCitation {
   url?: string;
   pmid?: string;
   snippet?: string;
+  evidenceScore?: number; // 0-100
+  type?: 'guideline' | 'review' | 'trial' | 'other';
+}
+
+/**
+ * Calculate evidence score based on source and recency
+ */
+export function calculateEvidenceScore(citation: ScraperCitation): number {
+  let score = 50; // Base score
+
+  // Source reputation
+  const highImpact = ['nejm', 'lancet', 'jama', 'bmj', 'nature', 'science', 'uptodate', 'cochrane'];
+  if (highImpact.some(s => citation.source.toLowerCase().includes(s))) {
+    score += 30;
+  }
+
+  // Recency
+  const currentYear = new Date().getFullYear();
+  if (citation.year) {
+    if (citation.year >= currentYear - 2) score += 20;
+    else if (citation.year >= currentYear - 5) score += 10;
+    else if (citation.year < currentYear - 10) score -= 10;
+  }
+
+  // Type
+  if (citation.type === 'guideline') score += 15;
+  if (citation.type === 'review') score += 10;
+
+  return Math.min(100, Math.max(0, score));
+}
+
+export interface CitationGroup {
+  id: string;
+  citations: ScraperCitation[];
+  primaryCitation: ScraperCitation;
+}
+
+/**
+ * Deduplicate and group citations
+ */
+export function groupCitations(citations: ScraperCitation[]): CitationGroup[] {
+  const groups: Record<string, ScraperCitation[]> = {};
+  
+  citations.forEach(c => {
+    // Simple dedupe key based on title similarity
+    const key = c.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 50);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(c);
+  });
+
+  return Object.values(groups).map(group => {
+    // Select highest evidence score as primary
+    const primary = group.reduce((prev, curr) => 
+      (calculateEvidenceScore(curr) > calculateEvidenceScore(prev)) ? curr : prev
+    );
+    return {
+      id: primary.id,
+      citations: group,
+      primaryCitation: primary
+    };
+  });
+}
+
+/**
+ * Check for guideline updates (Mock)
+ */
+export async function checkGuidelineUpdates(topic: string): Promise<ScraperCitation[]> {
+  // In a real app, this would query a dedicated guideline API or filter PubMed for "Practice Guideline" [Publication Type]
+  return [
+    {
+      id: `guideline-${Date.now()}`,
+      title: `2025 Clinical Practice Guideline for ${topic}`,
+      source: 'JAMA',
+      year: 2025,
+      type: 'guideline',
+      evidenceScore: 95
+    }
+  ];
 }
 
 export interface ScraperSearchResponse {

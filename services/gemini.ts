@@ -9,7 +9,7 @@ import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Activity, LearnerLevel, getActivityById, getLearnerLevelById } from '../data/activities';
 
 // Gemini 3 Flash - fast, cost-effective, excellent for agentic workflows and UI generation
-const GEMINI_MODEL = 'gemini-3.0-flash';
+const GEMINI_MODEL = 'gemini-3-flash-preview';
 
 const getApiKey = () => {
   const key = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.API_KEY;
@@ -182,9 +182,9 @@ export async function bringToLife(
 }
 
 export async function refineArtifact(currentHtml: string, instruction: string): Promise<string> {
-    const parts = [{
-        text: `You are refining an existing HTML medical education artifact.
-        
+  const parts = [{
+    text: `You are refining an existing HTML medical education artifact.
+
 CURRENT HTML:
 ${currentHtml}
 
@@ -192,29 +192,29 @@ USER INSTRUCTION:
 ${instruction}
 
 TASK:
-Update the HTML code to satisfy the user's instruction. 
+Update the HTML code to satisfy the user's instruction.
 - Keep the existing functionality unless asked to change it.
 - **Maintain the high-quality Tailwind styling.**
 - Ensure the result is still a valid, self-contained HTML file.
 
 RESPONSE FORMAT:
 Return ONLY the raw HTML code. Do not wrap it in markdown.`
-    }];
+  }];
 
-    try {
-        const response: GenerateContentResponse = await getAI().models.generateContent({
-            model: GEMINI_MODEL,
-            contents: { parts },
-            config: {
-                temperature: 0.2, 
-            },
-        });
+  try {
+    const response: GenerateContentResponse = await getAI().models.generateContent({
+      model: GEMINI_MODEL,
+      contents: { parts },
+      config: {
+        temperature: 0.2,
+      },
+    });
 
-        let text = response.text || currentHtml;
-        text = text.replace(/^```html\s*/, '').replace(/^```\s*/, '').replace(/```$/, '');
-        return text;
-    } catch (error) {
-        console.error("Gemini Refinement Error:", error);
-        throw error;
-    }
+    let text = response.text || currentHtml;
+    text = text.replace(/^```html\s*/, '').replace(/^```\s*/, '').replace(/```$/, '');
+    return text;
+  } catch (error) {
+    console.error("Gemini Refinement Error:", error);
+    throw error;
+  }
 }

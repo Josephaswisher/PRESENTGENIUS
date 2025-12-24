@@ -1,6 +1,7 @@
 /**
  * Interactive Canvas - Unified Lecture Builder for Dr. Swisher
  * Combines Socratic outline + Multi-source research + AI Chat Assistant
+ * ENHANCED: Drag-drop, Visual Timeline, AI Suggestions, Collaborative Cursors
  */
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -21,6 +22,10 @@ import {
   Cog6ToothIcon,
   PaperAirplaneIcon,
   ChatBubbleLeftRightIcon,
+  CursorArrowRaysIcon,
+  ArrowsUpDownIcon,
+  CubeIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { generateWithProvider, AIProvider } from '../services/ai-provider';
 import { searchMedicalEvidence, getLatestGuidelines } from '../services/perplexity';
@@ -80,6 +85,44 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   action?: 'research' | 'outline' | 'section' | 'modify';
+}
+
+// Drag and drop types
+interface DragItem {
+  id: string;
+  type: 'section';
+  index: number;
+}
+
+// Collaborative cursor
+interface CollaborativeCursor {
+  id: string;
+  userId: string;
+  userName: string;
+  color: string;
+  x: number;
+  y: number;
+  sectionId?: string;
+}
+
+// AI Suggestion
+interface AISuggestion {
+  id: string;
+  type: 'add_section' | 'expand_section' | 'add_question' | 'modify_content';
+  title: string;
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+  action: () => void;
+}
+
+// Timeline node
+interface TimelineNode {
+  sectionId: string;
+  title: string;
+  type: Section['type'];
+  slideCount: number;
+  completed: boolean;
+  active: boolean;
 }
 
 interface Props {
@@ -177,6 +220,40 @@ export const InteractiveCanvas: React.FC<Props> = ({
   const [isChatProcessing, setIsChatProcessing] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Drag and drop state
+  const [draggedItem, setDraggedItem] = useState<DragItem | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  // AI Suggestions state
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Collaborative cursors (simulated for demo)
+  const [collaborativeCursors, setCollaborativeCursors] = useState<CollaborativeCursor[]>([
+    { id: '1', userId: 'user1', userName: 'Dr. Chen', color: '#10b981', x: 0, y: 0, sectionId: undefined },
+    { id: '2', userId: 'user2', userName: 'Dr. Patel', color: '#8b5cf6', x: 0, y: 0, sectionId: undefined },
+  ]);
+  const [showCollaborators, setShowCollaborators] = useState(false);
+
+  // Timeline state
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+
+  // Simulate collaborative cursors movement
+  useEffect(() => {
+    if (!showCollaborators) return;
+    
+    const interval = setInterval(() => {
+      setCollaborativeCursors(prev => prev.map(cursor => ({
+        ...cursor,
+        x: Math.random() * 80 + 10,
+        y: Math.random() * 80 + 10,
+      })));
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [showCollaborators]);
+
   // Check scraper on mount
   useEffect(() => {
     checkScraperHealth().then(setScraperStatus);
@@ -186,6 +263,129 @@ export const InteractiveCanvas: React.FC<Props> = ({
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
+
+  // Generate AI suggestions when outline changes
+  useEffect(() => {
+    if (doc.sections.length > 0 && !isAnalyzing) {
+      generateAISuggestions();
+    }
+  }, [doc.sections.length]);
+
+  // Generate AI suggestions
+  const generateAISuggestions = async () => {
+    setIsAnalyzing(true);
+    try {
+      const suggestions: AISuggestion[] = [];
+
+      // Check for missing section types
+      const sectionTypes = new Set(doc.sections.map(s => s.type));
+      const potentialTypes: Section['type'][] = ['case', 'mechanism', 'clinical'];
+      const missingTypes = potentialTypes.filter(t => !sectionTypes.has(t));
+      
+      missingTypes.forEach((sectionType, i) => {
+        suggestions.push({
+          id: `suggest-${sectionType}-${i}`,
+          type: 'add_section',
+          title: `Add a ${sectionType} section`,
+          description: `Lectures benefit from ${sectionType} examples to reinforce learning.`,
+          priority: 'medium',
+          action: () => {
+            const newSection: Section = {
+              id: `section-${Date.now()}`,
+              title: sectionType === 'case' ? 'Clinical Case' : sectionType === 'mechanism' ? 'Pathophysiology' : 'Clinical Application',
+              type: sectionType,
+              content: '',
+              keyPoints: [],
+              slideCount: 4,
+              isExpanded: true,
+              followUpQuestions: [],
+            };
+            setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
+          },
+        });
+      });
+
+      // Check for sections without content
+      doc.sections.forEach((section, idx) => {
+        if (!section.content) {
+          suggestions.push({
+            id: `expand-${section.id}`,
+            type: 'expand_section',
+            title: `Expand "${section.title}"`,
+            description: 'This section lacks detailed content.',
+            priority: 'high',
+            action: () => expandSection(section.id),
+          });
+        }
+      });
+
+      // Check if sections need questions
+      doc.sections.forEach((section) => {
+        if (section.content && section.followUpQuestions.length === 0) {
+          suggestions.push({
+            id: `questions-${section.id}`,
+            type: 'add_question',
+            title: `Add questions to "${section.title}"`,
+            description: 'Socratic questions engage learners and check understanding.',
+            priority: 'medium',
+            action: () => generateSocraticQuestions(section.id),
+          });
+        }
+      });
+
+      setAiSuggestions(suggestions);
+    } catch (e) {
+      console.error('Failed to generate suggestions:', e);
+    }
+    setIsAnalyzing(false);
+  };
+
+  // Drag handlers
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedItem({ id: doc.sections[index].id, type: 'section', index });
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (!draggedItem || draggedItem.index === dropIndex) {
+      setDragOverIndex(null);
+      setDraggedItem(null);
+      return;
+    }
+
+    const newSections = [...doc.sections];
+    const [removed] = newSections.splice(draggedItem.index, 1);
+    newSections.splice(dropIndex, 0, removed);
+
+    setDoc(prev => ({ ...prev, sections: newSections }));
+    setDragOverIndex(null);
+    setDraggedItem(null);
+  };
+
+  // Generate timeline nodes
+  const getTimelineNodes = (): TimelineNode[] => {
+    return doc.sections.map((section, i) => ({
+      sectionId: section.id,
+      title: section.title,
+      type: section.type,
+      slideCount: section.slideCount,
+      completed: !!section.content,
+      active: activeSectionId === section.id,
+    }));
+  };
+
+  // Calculate progress
+  const getProgress = () => {
+    if (doc.sections.length === 0) return 0;
+    const completed = doc.sections.filter(s => s.content).length;
+    return Math.round((completed / doc.sections.length) * 100);
+  };
 
   // Toggle research source
   const toggleSource = (source: ResearchSource) => {
@@ -260,9 +460,7 @@ If the user asks to GENERATE OUTLINE, respond with: [ACTION:GENERATE_OUTLINE]
 
 Be concise, practical, and focused on high-yield medical education. Always be helpful and proactive.`;
 
-      const response = await generateWithProvider(currentProvider, userMessage, [], {
-        systemPrompt,
-      });
+      const response = await generateWithProvider(currentProvider, `${systemPrompt}\n\nUSER: ${userMessage}`, [], {});
 
       // Parse for actions
       const actionMatch = response.match(/\[ACTION:(\w+)(?::(.+?))?\]/);
@@ -615,7 +813,26 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
   const sectionsWithContent = doc.sections.filter(s => s.content).length;
 
   return (
-    <div className="flex-1 flex flex-col bg-zinc-950 overflow-hidden">
+    <div className="flex-1 flex flex-col bg-zinc-950 overflow-hidden relative">
+      {/* Collaborative Cursors Overlay */}
+      {showCollaborators && (
+        <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
+          {collaborativeCursors.map(cursor => (
+            <div
+              key={cursor.id}
+              className="absolute transition-all duration-1000 ease-in-out flex items-center gap-1"
+              style={{ left: `${cursor.x}%`, top: `${cursor.y}%` }}
+            >
+              <CursorArrowRaysIcon className="w-5 h-5 -rotate-90" style={{ color: cursor.color }} />
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full text-white bg-zinc-900/80 backdrop-blur" 
+                    style={{ border: `1px solid ${cursor.color}` }}>
+                {cursor.userName}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex-shrink-0 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-xl">
         <div className="flex items-center justify-between px-6 py-4">
@@ -648,11 +865,41 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
               ))}
             </div>
 
-            {doc.sections.length > 0 && (
-              <div className="text-sm text-zinc-500 hidden md:block">
-                {sectionsWithContent}/{doc.sections.length} sections • {totalSlides} slides
+            {/* Collaborators Toggle */}
+            <button
+              onClick={() => setShowCollaborators(!showCollaborators)}
+              className={`p-2 rounded-lg hover:bg-zinc-800 transition-all ${showCollaborators ? 'text-purple-400' : 'text-zinc-400'}`}
+              title="Toggle Collaborators"
+            >
+              <CursorArrowRaysIcon className="w-5 h-5" />
+            </button>
+
+            {/* AI Suggestions Toggle */}
+            <button
+              onClick={() => setShowSuggestions(!showSuggestions)}
+              className={`p-2 rounded-lg hover:bg-zinc-800 transition-all ${aiSuggestions.length > 0 ? 'text-cyan-400' : 'text-zinc-400'} relative`}
+              title="AI Suggestions"
+            >
+              <SparklesIcon className="w-5 h-5" />
+              {aiSuggestions.length > 0 && !showSuggestions && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                  {aiSuggestions.length}
+                </span>
+              )}
+            </button>
+
+            {/* Progress Bar */}
+            <div className="flex items-center gap-2">
+              <div className="w-24 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 transition-all duration-500"
+                  style={{ width: `${getProgress()}%` }}
+                />
               </div>
-            )}
+              <span className="text-xs text-zinc-400 w-8">{getProgress()}%</span>
+            </div>
+
+            <div className="h-6 w-px bg-zinc-800" />
             
             <button
               onClick={() => onGenerateSlides(doc)}
@@ -672,6 +919,60 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
             </button>
           </div>
         </div>
+
+        {/* Visual Timeline */}
+        {doc.sections.length > 0 && (
+          <div className="border-t border-zinc-800 bg-zinc-900/30 px-6 py-3">
+            <div className="flex items-center gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-zinc-800">
+              {getTimelineNodes().map((node, i) => (
+                <div key={node.sectionId} className="flex items-center gap-2 flex-shrink-0">
+                  <div
+                    className={`
+                      w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold cursor-pointer
+                      transition-all transform hover:scale-105 ${
+                        node.completed
+                          ? 'bg-gradient-to-br from-cyan-500 to-green-500 text-white shadow-lg shadow-cyan-500/20'
+                          : node.active
+                            ? 'bg-gradient-to-br from-purple-500 to-pink-500 text-white ring-2 ring-purple-400/50 shadow-lg shadow-purple-500/20'
+                            : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                      }
+                    `}
+                    title={node.title}
+                    onClick={() => {
+                      setActiveSectionId(node.sectionId);
+                      toggleSection(node.sectionId);
+                    }}
+                  >
+                    {SECTION_ICONS[node.type]}
+                  </div>
+                  {i < doc.sections.length - 1 && (
+                    <div className={`w-12 h-0.5 rounded-full ${
+                      node.completed ? 'bg-cyan-500/50' : 'bg-zinc-800'
+                    }`} />
+                  )}
+                </div>
+              ))}
+              <button 
+                onClick={() => {
+                  const newSection: Section = {
+                    id: `section-${Date.now()}`,
+                    title: 'New Section',
+                    type: 'concept',
+                    content: '',
+                    keyPoints: [],
+                    slideCount: 4,
+                    isExpanded: true,
+                    followUpQuestions: [],
+                  };
+                  setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
+                }}
+                className="w-8 h-8 rounded-full border border-dashed border-zinc-600 flex items-center justify-center text-zinc-500 hover:border-cyan-500 hover:text-cyan-500 transition-colors"
+              >
+                <PlusIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Settings Panel */}
         {showSettings && (
@@ -713,7 +1014,46 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
       </div>
 
       {/* Main Content - 3 Column Layout */}
-      <div className="flex-1 overflow-hidden flex">
+      <div className="flex-1 overflow-hidden flex relative">
+        {/* AI Suggestions Panel (Floating) */}
+        {showSuggestions && aiSuggestions.length > 0 && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 w-96 bg-zinc-900/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-4">
+            <div className="p-3 border-b border-zinc-800 flex items-center justify-between bg-gradient-to-r from-cyan-900/20 to-purple-900/20">
+              <div className="flex items-center gap-2">
+                <SparklesIcon className="w-4 h-4 text-cyan-400" />
+                <span className="text-sm font-bold text-white">AI Suggestions</span>
+              </div>
+              <button onClick={() => setShowSuggestions(false)} className="text-zinc-500 hover:text-white">
+                <XMarkIcon className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="max-h-80 overflow-y-auto p-2 space-y-2">
+              {aiSuggestions.map(suggestion => (
+                <div key={suggestion.id} className="p-3 bg-zinc-800/50 rounded-xl hover:bg-zinc-800 transition-colors border border-zinc-700/50">
+                  <div className="flex justify-between items-start mb-1">
+                    <h4 className="text-sm font-medium text-white">{suggestion.title}</h4>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${
+                      suggestion.priority === 'high' ? 'bg-red-500/20 text-red-400' :
+                      suggestion.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                      'bg-blue-500/20 text-blue-400'
+                    }`}>{suggestion.priority}</span>
+                  </div>
+                  <p className="text-xs text-zinc-400 mb-2">{suggestion.description}</p>
+                  <button
+                    onClick={() => {
+                      suggestion.action();
+                      setAiSuggestions(prev => prev.filter(s => s.id !== suggestion.id));
+                    }}
+                    className="w-full py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-lg transition-colors flex items-center justify-center gap-1"
+                  >
+                    <PlusIcon className="w-3 h-3" /> Apply Suggestion
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Left Panel - Setup & Research */}
         <div className={`${leftPanelCollapsed ? 'w-0 overflow-hidden' : 'w-72'} transition-all duration-300 flex-shrink-0 relative`}>
           <div className={`h-full w-72 border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${leftPanelCollapsed ? 'invisible' : 'visible'}`}>
@@ -829,7 +1169,7 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
               </div>
             )}
 
-            {/* Section List */}
+            {/* Section List (Compact) */}
             {doc.sections.length > 0 && (
               <div>
                 <div className="text-xs font-medium text-zinc-400 mb-2">OUTLINE</div>
@@ -837,7 +1177,10 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                   {doc.sections.map((section, i) => (
                     <button
                       key={section.id}
-                      onClick={() => toggleSection(section.id)}
+                      onClick={() => {
+                        setActiveSectionId(section.id);
+                        toggleSection(section.id);
+                      }}
                       className={`w-full text-left p-2 rounded-lg transition-all flex items-center gap-2 ${
                         section.isExpanded ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
                       }`}
@@ -870,7 +1213,7 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
         </button>
 
         {/* Center Panel - Sections Editor */}
-        <div className="flex-1 overflow-y-auto p-4 min-w-0">
+        <div className="flex-1 overflow-y-auto p-4 min-w-0" onDragOver={(e) => e.preventDefault()}>
           {doc.sections.length === 0 ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center max-w-md">
@@ -898,39 +1241,56 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
               </div>
             </div>
           ) : (
-            <div className="space-y-3 max-w-3xl mx-auto">
+            <div className="space-y-3 max-w-3xl mx-auto pb-10">
               {doc.sections.map((section, index) => (
                 <div
                   key={section.id}
-                  className={`rounded-xl border transition-all ${
-                    section.isExpanded ? 'bg-zinc-900 border-zinc-700' : 'bg-zinc-900/50 border-zinc-800'
-                  }`}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDrop={(e) => handleDrop(e, index)}
+                  className={`rounded-xl border transition-all duration-300 ${
+                    section.isExpanded ? 'bg-zinc-900 border-zinc-700 shadow-xl' : 'bg-zinc-900/50 border-zinc-800'
+                  } ${dragOverIndex === index ? 'border-t-2 border-t-cyan-500 mt-4' : ''} ${draggedItem?.id === section.id ? 'opacity-50' : ''}`}
                 >
                   {/* Section Header */}
                   <div
-                    className="p-3 flex items-center gap-3 cursor-pointer"
-                    onClick={() => toggleSection(section.id)}
+                    className="p-3 flex items-center gap-3 cursor-pointer group"
                   >
-                    <span className="text-xl">{SECTION_ICONS[section.type]}</span>
-                    <div className="flex-1">
-                      <div className="text-xs text-zinc-500">Section {index + 1}</div>
-                      <div className="text-base font-medium text-white">{section.title}</div>
+                    <div 
+                      className="cursor-move text-zinc-600 group-hover:text-zinc-400"
+                      title="Drag to reorder"
+                    >
+                      <ArrowsUpDownIcon className="w-4 h-4" />
                     </div>
-                    <span className="text-xs text-zinc-500">{section.slideCount} slides</span>
-                    {section.isExpanded ? (
-                      <ChevronDownIcon className="w-4 h-4 text-zinc-500" />
-                    ) : (
-                      <ChevronRightIcon className="w-4 h-4 text-zinc-500" />
-                    )}
+                    
+                    <div className="flex-1 flex items-center gap-3" onClick={() => toggleSection(section.id)}>
+                      <span className="text-xl">{SECTION_ICONS[section.type]}</span>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-zinc-500">Section {index + 1}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 rounded-full text-zinc-400 uppercase">{section.type}</span>
+                        </div>
+                        <div className="text-base font-medium text-white">{section.title}</div>
+                      </div>
+                      <span className="text-xs text-zinc-500 flex items-center gap-1">
+                        <CubeIcon className="w-3 h-3" /> {section.slideCount}
+                      </span>
+                      {section.isExpanded ? (
+                        <ChevronDownIcon className="w-4 h-4 text-zinc-500" />
+                      ) : (
+                        <ChevronRightIcon className="w-4 h-4 text-zinc-500" />
+                      )}
+                    </div>
                   </div>
 
                   {/* Expanded Content */}
                   {section.isExpanded && (
                     <div className="px-3 pb-3 space-y-3">
                       {/* Key Points */}
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1.5 pl-7">
                         {section.keyPoints.map((point, i) => (
-                          <span key={i} className="px-2 py-0.5 bg-zinc-800 rounded text-xs text-zinc-300">
+                          <span key={i} className="px-2 py-0.5 bg-zinc-800 rounded text-xs text-zinc-300 border border-zinc-700">
                             {point}
                           </span>
                         ))}
@@ -938,28 +1298,32 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
 
                       {/* Content */}
                       {section.content ? (
-                        <div className="p-3 bg-zinc-800/50 rounded-lg">
-                          <p className="text-sm text-zinc-300 whitespace-pre-wrap">{section.content}</p>
+                        <div className="pl-7">
+                          <div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700/50">
+                            <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{section.content}</p>
+                          </div>
                         </div>
                       ) : (
                         <button
                           onClick={() => expandSection(section.id)}
                           disabled={expandingSection === section.id}
-                          className="w-full py-2 border border-dashed border-zinc-700 rounded-lg text-zinc-500 text-sm
-                                     hover:border-purple-500/50 hover:text-purple-400 flex items-center justify-center gap-2"
+                          className="w-full ml-7 py-3 border border-dashed border-zinc-700 rounded-lg text-zinc-500 text-sm
+                                     hover:border-purple-500/50 hover:text-purple-400 flex items-center justify-center gap-2 transition-all bg-zinc-800/20"
                         >
                           {expandingSection === section.id ? (
-                            <><ArrowPathIcon className="w-3 h-3 animate-spin" /> Writing...</>
+                            <><ArrowPathIcon className="w-4 h-4 animate-spin" /> Writing content...</>
                           ) : (
-                            <><SparklesIcon className="w-3 h-3" /> Expand</>
+                            <><SparklesIcon className="w-4 h-4" /> Expand with AI</>
                           )}
                         </button>
                       )}
 
                       {/* Socratic Questions */}
                       {section.followUpQuestions.length > 0 && (
-                        <div className="pt-3 border-t border-zinc-800">
-                          <div className="text-xs text-zinc-400 mb-2">Follow-up Questions</div>
+                        <div className="pt-3 border-t border-zinc-800 pl-7">
+                          <div className="text-xs text-zinc-400 mb-2 flex items-center gap-1">
+                            <QuestionMarkCircleIcon className="w-3 h-3" /> Socratic Questions
+                          </div>
                           <div className="space-y-1.5">
                             {section.followUpQuestions.slice(0, 3).map((q) => {
                               const style = QUESTION_STYLES[q.type];
@@ -968,14 +1332,17 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                                 <button
                                   key={q.id}
                                   onClick={() => selectQuestion(section.id, q)}
-                                  className={`w-full text-left p-2 rounded-lg text-xs transition-all ${
+                                  className={`w-full text-left p-2.5 rounded-lg text-xs transition-all flex items-start gap-2 ${
                                     isSelected
-                                      ? 'bg-purple-500/20 border border-purple-500/50'
-                                      : 'bg-zinc-800/50 hover:bg-zinc-800'
+                                      ? 'bg-purple-500/20 border border-purple-500/50 ring-1 ring-purple-500/20'
+                                      : 'bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800'
                                   }`}
                                 >
-                                  <span className="mr-1">{style.icon}</span>
-                                  {q.question}
+                                  <span className="text-base mt-0.5">{style.icon}</span>
+                                  <div>
+                                    <div className="font-medium text-zinc-200">{q.question}</div>
+                                    <div className="text-[10px] text-zinc-500 mt-0.5">{q.insight}</div>
+                                  </div>
                                 </button>
                               );
                             })}
@@ -984,24 +1351,24 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                       )}
 
                       {/* Actions */}
-                      <div className="flex justify-between items-center">
+                      <div className="flex justify-between items-center pl-7 pt-1">
                         <button
                           onClick={() => generateSocraticQuestions(section.id)}
                           disabled={generatingQuestionsFor === section.id}
-                          className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                          className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 px-2 py-1 rounded hover:bg-purple-500/10"
                         >
                           {generatingQuestionsFor === section.id ? (
                             <ArrowPathIcon className="w-3 h-3 animate-spin" />
                           ) : (
-                            <QuestionMarkCircleIcon className="w-3 h-3" />
+                            <ArrowPathIcon className="w-3 h-3" />
                           )}
-                          Questions
+                          Regenerate Questions
                         </button>
                         <button
                           onClick={() => removeSection(section.id)}
-                          className="text-xs text-zinc-500 hover:text-red-400 flex items-center gap-1"
+                          className="text-xs text-zinc-500 hover:text-red-400 flex items-center gap-1 px-2 py-1 rounded hover:bg-red-500/10"
                         >
-                          <TrashIcon className="w-3 h-3" />
+                          <TrashIcon className="w-3 h-3" /> Remove Section
                         </button>
                       </div>
                     </div>
@@ -1024,10 +1391,10 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                   };
                   setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
                 }}
-                className="w-full py-3 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-sm
-                           hover:border-cyan-500/50 hover:text-cyan-400 flex items-center justify-center gap-2"
+                className="w-full py-4 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-sm
+                           hover:border-cyan-500/50 hover:text-cyan-400 flex items-center justify-center gap-2 transition-all hover:bg-zinc-900"
               >
-                <PlusIcon className="w-4 h-4" /> Add Section
+                <PlusIcon className="w-5 h-5" /> Add Section
               </button>
             </div>
           )}

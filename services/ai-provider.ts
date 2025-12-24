@@ -8,6 +8,7 @@ import * as claude from './claude';
 import * as opus from './opus';
 import { withRetry } from '../lib/retry';
 import { getCachedResponse, setCachedResponse } from './cache';
+import { getAdaptivePromptContext } from './knowledge';
 
 export type AIProvider = 'gemini' | 'claude' | 'opus' | 'dual' | 'auto';
 
@@ -45,8 +46,8 @@ export const PROVIDERS: ProviderInfo[] = [
   },
   {
     id: 'gemini',
-    name: 'Gemini 3 Flash',
-    model: 'gemini-3.0-flash',
+    name: 'Gemini 3 Flash (Preview)',
+    model: 'gemini-3-flash-preview',
     icon: '⚡',
     color: 'from-blue-500 to-cyan-500',
   },
@@ -79,7 +80,7 @@ export const PROVIDERS: ProviderInfo[] = [
 export function selectBestProvider(prompt: string, files: FileInput[]): AIProvider {
   const hasImages = files.some(f => f.mimeType.startsWith('image/'));
   const promptLength = prompt.length;
-  const isComplex = promptLength > 500 || 
+  const isComplex = promptLength > 500 ||
     prompt.toLowerCase().includes('case study') ||
     prompt.toLowerCase().includes('differential') ||
     prompt.toLowerCase().includes('algorithm');
@@ -89,13 +90,13 @@ export function selectBestProvider(prompt: string, files: FileInput[]): AIProvid
 
   // Complex medical content with images -> Dual (best quality)
   if (hasImages && isComplex) return 'dual';
-  
+
   // Deep medical content -> Opus (best accuracy)
   if (isMedicalDeep) return 'opus';
-  
+
   // Complex but no images -> Opus
   if (isComplex) return 'opus';
-  
+
   // Simple/fast -> Gemini (fastest)
   return 'gemini';
 }
@@ -132,7 +133,7 @@ async function generateWithDualAgents(
   // Phase 1: Gemini creates the base structure and interactivity
   onProgress?.('gemini', 10, 'Gemini creating structure...');
   console.log('[Dual AI] Phase 1: Gemini creating structure...');
-  
+
   const geminiResult = await withRetry(
     () => gemini.bringToLife(
       `${prompt}\n\nFocus on creating excellent HTML structure, interactive elements, and visual design.`,
@@ -147,7 +148,7 @@ async function generateWithDualAgents(
   // Phase 2: Opus enhances the medical content and accuracy
   onProgress?.('opus', 55, 'Opus enhancing content...');
   console.log('[Dual AI] Phase 2: Opus enhancing content...');
-  
+
   const opusEnhanced = await withRetry(
     () => opus.refineArtifact(
       geminiResult,
@@ -157,7 +158,7 @@ async function generateWithDualAgents(
       3. Enhance explanations for better learning
       4. Ensure medical terminology is correct
       5. Keep the HTML structure and interactivity intact
-      
+
       Return the improved HTML.`
     ),
     { maxRetries: 2, onRetry: (err, attempt) => console.log(`[Opus] Retry ${attempt}:`, err.message) }
@@ -179,17 +180,21 @@ export async function generateWithProvider(
 ): Promise<string> {
   onProgress?.('starting', 0, 'Initializing...');
 
+  // Inject adaptive context
+  const adaptiveContext = getAdaptivePromptContext();
+  const enhancedPrompt = `${prompt}\n${adaptiveContext}`;
+
   // Auto-select provider if needed
   let actualProvider = provider;
   if (provider === 'auto') {
-    actualProvider = selectBestProvider(prompt, files);
+    actualProvider = selectBestProvider(enhancedPrompt, files);
     console.log(`[Auto] Selected provider: ${actualProvider}`);
     onProgress?.('starting', 5, `Auto-selected: ${getProviderInfo(actualProvider).name}`);
   }
 
   // Check cache first (skip for dual mode as it's multi-step)
   if (actualProvider !== 'dual' && files.length === 0) {
-    const cached = await getCachedResponse(prompt, actualProvider);
+    const cached = await getCachedResponse(enhancedPrompt, actualProvider);
     if (cached) {
       onProgress?.('complete', 100, 'Loaded from cache');
       return cached;
@@ -205,22 +210,24 @@ export async function generateWithProvider(
 
   switch (actualProvider) {
     case 'dual':
-      result = await generateWithDualAgents(prompt, files, options, onProgress);
+      result = await generateWithDualAgents(enhancedPrompt, files, options, onProgress);
       break;
     case 'opus':
       onProgress?.('opus', 10, 'Opus generating...');
       result = await withRetry(
-        () => opus.bringToLife(prompt, files, opts),
-        { maxRetries: 3, onRetry: (err, attempt) => {
-          console.log(`[Opus] Retry ${attempt}:`, err.message);
-          onProgress?.('opus', 10 + attempt * 5, `Retrying... (${attempt})`);
-        }}
+        () => opus.bringToLife(enhancedPrompt, files, opts),
+        {
+          maxRetries: 3, onRetry: (err, attempt) => {
+            console.log(`[Opus] Retry ${attempt}:`, err.message);
+            onProgress?.('opus', 10 + attempt * 5, `Retrying... (${attempt})`);
+          }
+        }
       );
       break;
     case 'claude':
       onProgress?.('claude', 10, 'Claude generating...');
       result = await withRetry(
-        () => claude.bringToLife(prompt, files, opts),
+        () => claude.bringToLife(enhancedPrompt, files, opts),
         { maxRetries: 3 }
       );
       break;
@@ -228,7 +235,7 @@ export async function generateWithProvider(
     default:
       onProgress?.('gemini', 10, 'Gemini generating...');
       result = await withRetry(
-        () => gemini.bringToLife(prompt, files, opts),
+        () => gemini.bringToLife(enhancedPrompt, files, opts),
         { maxRetries: 3 }
       );
       break;
@@ -237,7 +244,7 @@ export async function generateWithProvider(
   // Cache the result (skip for file-based generations)
   if (files.length === 0 && actualProvider !== 'dual') {
     onProgress?.('caching', 95, 'Saving to cache...');
-    await setCachedResponse(prompt, result, actualProvider);
+    await setCachedResponse(enhancedPrompt, result, actualProvider);
   }
 
   onProgress?.('complete', 100, 'Done');
