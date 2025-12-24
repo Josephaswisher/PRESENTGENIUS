@@ -1,11 +1,43 @@
 /**
  * Audience Sync Service
- * Real-time sync for phone follow-along mode using Supabase Realtime
+ * Real-time sync for collaboration and audience engagement using Supabase Realtime
  */
+import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
-// Session code generator
+// Types
+export interface SessionState {
+  code: string;
+  currentSlide: number;
+  totalSlides: number;
+  title: string;
+  isActive: boolean;
+  presenterId?: string;
+}
+
+export interface CursorPosition {
+  x: number;
+  y: number;
+  userId: string;
+  userName: string;
+  color: string;
+}
+
+export interface SyncEvent {
+  type: 'slide_change' | 'annotation' | 'reaction';
+  payload: any;
+  timestamp: number;
+}
+
+// State
+let currentChannel: RealtimeChannel | null = null;
+let sessionState: SessionState | null = null;
+
+/**
+ * Generate a random 6-character code
+ */
 export function generateSessionCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Avoid confusing chars
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 6; i++) {
     code += chars[Math.floor(Math.random() * chars.length)];
@@ -13,181 +45,178 @@ export function generateSessionCode(): string {
   return code;
 }
 
-// Session state
-export interface SessionState {
-  code: string;
-  currentSlide: number;
-  totalSlides: number;
-  title: string;
-  isActive: boolean;
-  startedAt: Date;
-  presenterName?: string;
-}
-
-export interface SlideContent {
-  slideNumber: number;
-  title?: string;
-  keyPoints: string[];
-  fillInBlanks?: { id: string; prompt: string; answer: string; revealed: boolean }[];
-  poll?: { question: string; options: string[]; votes: Record<string, number> };
-}
-
-// In-memory session store (would use Supabase in production)
-const sessions = new Map<string, SessionState>();
-const slideContents = new Map<string, SlideContent[]>();
-const listeners = new Map<string, Set<(state: SessionState) => void>>();
-
 /**
- * Create a new presentation session
+ * Initialize a session (Host)
  */
-export function createSession(title: string, totalSlides: number): SessionState {
+export async function createSession(title: string, totalSlides: number, presenterId: string): Promise<SessionState> {
   const code = generateSessionCode();
-  const session: SessionState = {
+  
+  sessionState = {
     code,
     currentSlide: 0,
     totalSlides,
     title,
     isActive: true,
-    startedAt: new Date(),
+    presenterId
   };
-  sessions.set(code, session);
-  slideContents.set(code, []);
-  listeners.set(code, new Set());
-  return session;
-}
 
-/**
- * Get session by code
- */
-export function getSession(code: string): SessionState | null {
-  return sessions.get(code.toUpperCase()) || null;
-}
-
-/**
- * Update current slide
- */
-export function updateSlide(code: string, slideNumber: number): void {
-  const session = sessions.get(code);
-  if (session) {
-    session.currentSlide = slideNumber;
-    notifyListeners(code, session);
-  }
-}
-
-/**
- * Add slide content for follow-along
- */
-export function setSlideContent(code: string, content: SlideContent): void {
-  const contents = slideContents.get(code) || [];
-  contents[content.slideNumber] = content;
-  slideContents.set(code, contents);
-}
-
-/**
- * Get current slide content
- */
-export function getCurrentSlideContent(code: string): SlideContent | null {
-  const session = sessions.get(code);
-  const contents = slideContents.get(code);
-  if (session && contents) {
-    return contents[session.currentSlide] || null;
-  }
-  return null;
-}
-
-/**
- * Subscribe to session updates
- */
-export function subscribeToSession(
-  code: string, 
-  callback: (state: SessionState) => void
-): () => void {
-  const sessionListeners = listeners.get(code);
-  if (sessionListeners) {
-    sessionListeners.add(callback);
-    // Send current state immediately
-    const session = sessions.get(code);
-    if (session) callback(session);
+  if (isSupabaseConfigured() && supabase) {
+    // Join the channel
+    await joinSessionChannel(code, presenterId, 'Presenter');
     
-    return () => {
-      sessionListeners.delete(callback);
-    };
+    // Store session metadata in DB (optional persistence)
+    // await supabase.from('sessions').insert({ ... })
   }
-  return () => {};
+
+  return sessionState;
 }
 
 /**
- * End session
+ * Join a session (Audience/Collaborator)
  */
-export function endSession(code: string): void {
-  const session = sessions.get(code);
-  if (session) {
-    session.isActive = false;
-    notifyListeners(code, session);
+export async function joinSession(code: string, userId: string, userName: string): Promise<boolean> {
+  if (isSupabaseConfigured() && supabase) {
+    currentChannel = await joinSessionChannel(code, userId, userName);
+    return !!currentChannel;
   }
-  // Clean up after a delay
-  setTimeout(() => {
-    sessions.delete(code);
-    slideContents.delete(code);
-    listeners.delete(code);
-  }, 60000); // Keep for 1 minute after ending
-}
-
-// Notify all listeners
-function notifyListeners(code: string, state: SessionState): void {
-  const sessionListeners = listeners.get(code);
-  if (sessionListeners) {
-    sessionListeners.forEach(cb => cb(state));
-  }
+  return false;
 }
 
 /**
- * Generate QR code URL for session
+ * Internal: Setup Realtime Channel
  */
-export function getFollowAlongUrl(code: string): string {
-  // In production, this would be your actual domain
-  const baseUrl = window.location.origin;
-  return `${baseUrl}/follow/${code}`;
-}
+async function joinSessionChannel(code: string, userId: string, userName: string): Promise<RealtimeChannel> {
+  if (!supabase) throw new Error('Supabase not initialized');
 
-/**
- * Parse slide content from HTML to extract key points
- */
-export function parseSlideContent(html: string, slideNumber: number): SlideContent {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  
-  // Extract title
-  const title = doc.querySelector('h1, h2, .slide-title')?.textContent || undefined;
-  
-  // Extract bullet points
-  const keyPoints: string[] = [];
-  doc.querySelectorAll('li, .key-point, .bullet').forEach(el => {
-    const text = el.textContent?.trim();
-    if (text && text.length > 0 && text.length < 200) {
-      keyPoints.push(text);
-    }
+  // Clean up existing channel
+  if (currentChannel) {
+    await supabase.removeChannel(currentChannel);
+  }
+
+  const channel = supabase.channel(`session:${code}`, {
+    config: {
+      presence: {
+        key: userId,
+      },
+    },
   });
-  
-  // Look for fill-in-the-blank patterns (text with ___ or [blank])
-  const fillInBlanks: SlideContent['fillInBlanks'] = [];
-  const blankPattern = /___+|\[blank\]|\[fill\]/gi;
-  doc.querySelectorAll('p, li, span').forEach((el, i) => {
-    const text = el.textContent || '';
-    if (blankPattern.test(text)) {
-      fillInBlanks.push({
-        id: `blank-${slideNumber}-${i}`,
-        prompt: text.replace(blankPattern, '_____'),
-        answer: '', // Would need AI to fill this
-        revealed: false,
+
+  channel
+    .on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      // Notify listeners of user list update
+      notifyPresenceListeners(state);
+    })
+    .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+      console.log('User joined:', key, newPresences);
+    })
+    .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+      console.log('User left:', key, leftPresences);
+    })
+    .on('broadcast', { event: 'slide_change' }, (payload) => {
+      if (sessionState) {
+        sessionState.currentSlide = payload.slideIndex;
+        notifySlideListeners(payload.slideIndex);
+      }
+    })
+    .on('broadcast', { event: 'cursor_move' }, (payload) => {
+      // Supabase payload wrapper handling
+      const cursor = payload.payload as CursorPosition;
+      notifyCursorListeners(cursor);
+    });
+
+  await channel.subscribe(async (status) => {
+    if (status === 'SUBSCRIBED') {
+      channel.track({
+        user_id: userId,
+        user_name: userName,
+        online_at: new Date().toISOString(),
+        cursor: null
       });
     }
   });
 
-  return {
-    slideNumber,
-    title,
-    keyPoints: keyPoints.slice(0, 5), // Limit to 5 key points
-    fillInBlanks: fillInBlanks.length > 0 ? fillInBlanks : undefined,
-  };
+  currentChannel = channel;
+  return channel;
+}
+
+/**
+ * Broadcast slide update
+ */
+export async function updateSlide(slideIndex: number) {
+  if (sessionState) {
+    sessionState.currentSlide = slideIndex;
+  }
+
+  if (currentChannel) {
+    await currentChannel.send({
+      type: 'broadcast',
+      event: 'slide_change',
+      payload: { slideIndex, timestamp: Date.now() },
+    });
+  }
+}
+
+/**
+ * Broadcast cursor movement
+ */
+export async function broadcastCursor(x: number, y: number, userId: string, userName: string, color: string) {
+  if (currentChannel) {
+    // Debounce/throttle could be applied here if needed
+    await currentChannel.send({
+      type: 'broadcast',
+      event: 'cursor_move',
+      payload: { x, y, userId, userName, color } as CursorPosition,
+    });
+  }
+}
+
+/**
+ * Leave session
+ */
+export async function leaveSession() {
+  if (currentChannel && supabase) {
+    await supabase.removeChannel(currentChannel);
+    currentChannel = null;
+    sessionState = null;
+  }
+}
+
+// --------------------------------------------------------------------------
+// Event Listeners
+// --------------------------------------------------------------------------
+
+type PresenceCallback = (state: any) => void;
+type SlideCallback = (slideIndex: number) => void;
+type CursorCallback = (cursor: CursorPosition) => void;
+
+const presenceListeners = new Set<PresenceCallback>();
+const slideListeners = new Set<SlideCallback>();
+const cursorListeners = new Set<CursorCallback>();
+
+export function onPresenceUpdate(cb: PresenceCallback) {
+  presenceListeners.add(cb);
+  return () => presenceListeners.delete(cb);
+}
+
+export function onSlideUpdate(cb: SlideCallback) {
+  slideListeners.add(cb);
+  return () => slideListeners.delete(cb);
+}
+
+export function onCursorMove(cb: CursorCallback) {
+  cursorListeners.add(cb);
+  return () => cursorListeners.delete(cb);
+}
+
+function notifyPresenceListeners(state: any) {
+  presenceListeners.forEach(cb => cb(state));
+}
+
+function notifySlideListeners(slideIndex: number) {
+  slideListeners.forEach(cb => cb(slideIndex));
+}
+
+function notifyCursorListeners(cursor: CursorPosition) {
+  cursorListeners.forEach(cb => cb(cursor));
 }

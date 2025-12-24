@@ -39,6 +39,7 @@ import {
   formatSearchResults,
   type ScraperStatus,
 } from '../services/medical-scrapers';
+import { useCollaborationStore } from '../stores/collaboration.store';
 
 // Types
 type ResearchSource = 'uptodate' | 'mksap' | 'perplexity' | 'pubmed';
@@ -92,17 +93,6 @@ interface DragItem {
   id: string;
   type: 'section';
   index: number;
-}
-
-// Collaborative cursor
-interface CollaborativeCursor {
-  id: string;
-  userId: string;
-  userName: string;
-  color: string;
-  x: number;
-  y: number;
-  sectionId?: string;
 }
 
 // AI Suggestion
@@ -188,6 +178,29 @@ export const InteractiveCanvas: React.FC<Props> = ({
     sections: [],
   });
 
+  // Collaboration Store
+  const { isConnected, activeUsers, cursors, connect, disconnect, updateCursor } = useCollaborationStore();
+  const [showCollaborators, setShowCollaborators] = useState(false);
+
+  // Auto-connect on mount (mock user for demo)
+  useEffect(() => {
+    if (showCollaborators && !isConnected) {
+      connect('demo-session', { id: `user-${Date.now()}`, name: 'Dr. Current' });
+    }
+    return () => {
+      if (isConnected) disconnect();
+    };
+  }, [showCollaborators]);
+
+  // Track mouse movement
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isConnected) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    updateCursor(x, y);
+  };
+
   // Loading states
   const [isResearching, setIsResearching] = useState(false);
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
@@ -229,30 +242,8 @@ export const InteractiveCanvas: React.FC<Props> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // Collaborative cursors (simulated for demo)
-  const [collaborativeCursors, setCollaborativeCursors] = useState<CollaborativeCursor[]>([
-    { id: '1', userId: 'user1', userName: 'Dr. Chen', color: '#10b981', x: 0, y: 0, sectionId: undefined },
-    { id: '2', userId: 'user2', userName: 'Dr. Patel', color: '#8b5cf6', x: 0, y: 0, sectionId: undefined },
-  ]);
-  const [showCollaborators, setShowCollaborators] = useState(false);
-
   // Timeline state
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
-
-  // Simulate collaborative cursors movement
-  useEffect(() => {
-    if (!showCollaborators) return;
-    
-    const interval = setInterval(() => {
-      setCollaborativeCursors(prev => prev.map(cursor => ({
-        ...cursor,
-        x: Math.random() * 80 + 10,
-        y: Math.random() * 80 + 10,
-      })));
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [showCollaborators]);
 
   // Check scraper on mount
   useEffect(() => {
@@ -813,14 +804,17 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
   const sectionsWithContent = doc.sections.filter(s => s.content).length;
 
   return (
-    <div className="flex-1 flex flex-col bg-zinc-950 overflow-hidden relative">
+    <div 
+      className="flex-1 flex flex-col bg-zinc-950 overflow-hidden relative"
+      onMouseMove={handleMouseMove}
+    >
       {/* Collaborative Cursors Overlay */}
       {showCollaborators && (
         <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
-          {collaborativeCursors.map(cursor => (
+          {Object.values(cursors).map(cursor => (
             <div
-              key={cursor.id}
-              className="absolute transition-all duration-1000 ease-in-out flex items-center gap-1"
+              key={cursor.userId}
+              className="absolute transition-all duration-100 ease-in-out flex items-center gap-1"
               style={{ left: `${cursor.x}%`, top: `${cursor.y}%` }}
             >
               <CursorArrowRaysIcon className="w-5 h-5 -rotate-90" style={{ color: cursor.color }} />
@@ -868,10 +862,15 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
             {/* Collaborators Toggle */}
             <button
               onClick={() => setShowCollaborators(!showCollaborators)}
-              className={`p-2 rounded-lg hover:bg-zinc-800 transition-all ${showCollaborators ? 'text-purple-400' : 'text-zinc-400'}`}
+              className={`p-2 rounded-lg hover:bg-zinc-800 transition-all ${showCollaborators ? 'text-purple-400' : 'text-zinc-400'} relative`}
               title="Toggle Collaborators"
             >
               <CursorArrowRaysIcon className="w-5 h-5" />
+              {activeUsers.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                  {activeUsers.length}
+                </span>
+              )}
             </button>
 
             {/* AI Suggestions Toggle */}
