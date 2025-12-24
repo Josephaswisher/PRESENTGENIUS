@@ -29,9 +29,9 @@ import {
 } from '@heroicons/react/24/outline';
 import { generateWithProvider, AIProvider } from '../services/ai-provider';
 import { searchMedicalEvidence, getLatestGuidelines } from '../services/perplexity';
-import { 
-  searchUpToDate, 
-  searchMKSAP, 
+import {
+  searchUpToDate,
+  searchMKSAP,
   searchPubMed,
   checkScraperHealth,
   loginUpToDate,
@@ -40,6 +40,8 @@ import {
   type ScraperStatus,
 } from '../services/medical-scrapers';
 import { useCollaborationStore } from '../stores/collaboration.store';
+import { ChatMessage } from './ChatMessage';
+import TextareaAutosize from 'react-textarea-autosize';
 
 // Types
 type ResearchSource = 'uptodate' | 'mksap' | 'perplexity' | 'pubmed';
@@ -166,8 +168,8 @@ const QUICK_ACTIONS = [
   { label: 'Board questions', prompt: 'Suggest board-style questions I should include' },
 ];
 
-export const InteractiveCanvas: React.FC<Props> = ({ 
-  onGenerateSlides, 
+export const InteractiveCanvas: React.FC<Props> = ({
+  onGenerateSlides,
   currentProvider,
   onProviderChange,
 }) => {
@@ -206,11 +208,11 @@ export const InteractiveCanvas: React.FC<Props> = ({
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
   const [generatingQuestionsFor, setGeneratingQuestionsFor] = useState<string | null>(null);
   const [expandingSection, setExpandingSection] = useState<string | null>(null);
-  
+
   // Research config
   const [selectedSources, setSelectedSources] = useState<ResearchSource[]>(['uptodate', 'perplexity']);
   const [globalResearch, setGlobalResearch] = useState<ResearchResult[]>([]);
-  
+
   // Service status
   const [scraperStatus, setScraperStatus] = useState<ScraperStatus | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -272,7 +274,7 @@ export const InteractiveCanvas: React.FC<Props> = ({
       const sectionTypes = new Set(doc.sections.map(s => s.type));
       const potentialTypes: Section['type'][] = ['case', 'mechanism', 'clinical'];
       const missingTypes = potentialTypes.filter(t => !sectionTypes.has(t));
-      
+
       missingTypes.forEach((sectionType, i) => {
         suggestions.push({
           id: `suggest-${sectionType}-${i}`,
@@ -380,8 +382,8 @@ export const InteractiveCanvas: React.FC<Props> = ({
 
   // Toggle research source
   const toggleSource = (source: ResearchSource) => {
-    setSelectedSources(prev => 
-      prev.includes(source) 
+    setSelectedSources(prev =>
+      prev.includes(source)
         ? prev.filter(s => s !== source)
         : [...prev, source]
     );
@@ -422,8 +424,8 @@ export const InteractiveCanvas: React.FC<Props> = ({
       const contextParts = [];
       if (doc.topic) contextParts.push(`Current topic: "${doc.topic}"`);
       if (doc.sections.length > 0) {
-        contextParts.push(`Current outline (${doc.sections.length} sections):\n${doc.sections.map((s, i) => 
-          `${i+1}. ${s.title} (${s.type}) - ${s.keyPoints.join(', ')}`
+        contextParts.push(`Current outline (${doc.sections.length} sections):\n${doc.sections.map((s, i) =>
+          `${i + 1}. ${s.title} (${s.type}) - ${s.keyPoints.join(', ')}`
         ).join('\n')}`);
       }
       if (globalResearch.length > 0) {
@@ -444,21 +446,46 @@ You can help by:
 4. Suggesting board-style questions
 5. Helping refine content and flow
 
-If the user asks to SET THE TOPIC, respond with: [ACTION:SET_TOPIC:topic name here]
-If the user asks to ADD A SECTION, respond with: [ACTION:ADD_SECTION:{"title":"...","type":"concept|case|mechanism|clinical","keyPoints":["..."]}]
-If the user asks to RESEARCH, respond with: [ACTION:RESEARCH]
-If the user asks to GENERATE OUTLINE, respond with: [ACTION:GENERATE_OUTLINE]
+AVAILABLE ACTIONS (use these to control the lecture builder):
+- [ACTION:SET_TOPIC:topic name here] - Set the lecture topic
+- [ACTION:ADD_SECTION:{"title":"...","type":"intro|concept|case|mechanism|clinical|summary","keyPoints":["..."]}] - Add a new section
+- [ACTION:REMOVE_SECTION:section title or index] - Remove a section
+- [ACTION:MODIFY_SECTION:{"index":0,"title":"...","type":"...","keyPoints":["..."]}] - Modify existing section
+- [ACTION:EXPAND_SECTION:section title or index] - Expand a section with AI content
+- [ACTION:SET_AUDIENCE:students|residents|fellows|attendings] - Change target audience
+- [ACTION:SET_DURATION:number] - Set lecture duration in minutes
+- [ACTION:RESEARCH] - Research the current topic
+- [ACTION:GENERATE_OUTLINE] - Generate an AI-powered outline
+- [ACTION:GENERATE_SLIDES] - Generate the final presentation slides
 
-Be concise, practical, and focused on high-yield medical education. Always be helpful and proactive.`;
+IMPORTANT: When the user asks you to do something, ALWAYS include the appropriate action tag. Be proactive - if the user says "let's start with hypertension", use [ACTION:SET_TOPIC:Hypertension].
+Be concise, practical, and focused on high-yield medical education.`;
 
       const response = await generateWithProvider(currentProvider, `${systemPrompt}\n\nUSER: ${userMessage}`, [], {});
 
-      // Parse for actions
-      const actionMatch = response.match(/\[ACTION:(\w+)(?::(.+?))?\]/);
-      if (actionMatch) {
-        const [, action, payload] = actionMatch;
-        const cleanResponse = response.replace(/\[ACTION:.+?\]/g, '').trim();
+      // Parse for actions with robust handling for JSON arrays containing ']'
+      let action: string | undefined;
+      let payload: string | undefined;
+      let cleanResponse = response;
 
+      const actionStart = response.indexOf('[ACTION:');
+      if (actionStart !== -1) {
+        const actionEnd = response.lastIndexOf(']');
+        if (actionEnd > actionStart) {
+          const fullAction = response.slice(actionStart, actionEnd + 1);
+          // Match the action name and grab everything else as payload.
+          // Using [\s\S]* to capture multiline JSON payloads.
+          const contentMatch = fullAction.match(/\[ACTION:(\w+)(?::([\s\S]*))?\]/);
+
+          if (contentMatch) {
+            action = contentMatch[1];
+            payload = contentMatch[2] ? contentMatch[2].trim() : undefined;
+            cleanResponse = response.replace(fullAction, '').trim();
+          }
+        }
+      }
+
+      if (action) {
         switch (action) {
           case 'SET_TOPIC':
             if (payload) {
@@ -485,11 +512,77 @@ Be concise, practical, and focused on high-yield medical education. Always be he
               }
             }
             break;
+          case 'REMOVE_SECTION':
+            if (payload) {
+              const indexOrTitle = payload.trim();
+              const idx = parseInt(indexOrTitle);
+              setDoc(prev => ({
+                ...prev,
+                sections: prev.sections.filter((s, i) =>
+                  !isNaN(idx) ? i !== idx : s.title.toLowerCase() !== indexOrTitle.toLowerCase()
+                )
+              }));
+            }
+            break;
+          case 'MODIFY_SECTION':
+            if (payload) {
+              try {
+                const modData = JSON.parse(payload);
+                const targetIndex = modData.index ?? 0;
+                setDoc(prev => ({
+                  ...prev,
+                  sections: prev.sections.map((s, i) =>
+                    i === targetIndex
+                      ? {
+                        ...s,
+                        title: modData.title ?? s.title,
+                        type: modData.type ?? s.type,
+                        keyPoints: modData.keyPoints ?? s.keyPoints,
+                      }
+                      : s
+                  )
+                }));
+              } catch (e) {
+                console.error('Failed to parse modify section:', e);
+              }
+            }
+            break;
+          case 'EXPAND_SECTION':
+            if (payload) {
+              const indexOrTitle = payload.trim();
+              const idx = parseInt(indexOrTitle);
+              const section = !isNaN(idx)
+                ? doc.sections[idx]
+                : doc.sections.find(s => s.title.toLowerCase().includes(indexOrTitle.toLowerCase()));
+              if (section) {
+                expandSection(section.id);
+              }
+            }
+            break;
+          case 'SET_AUDIENCE':
+            if (payload) {
+              const audience = payload.trim().toLowerCase();
+              if (['students', 'residents', 'fellows', 'attendings'].includes(audience)) {
+                setDoc(prev => ({ ...prev, targetAudience: audience }));
+              }
+            }
+            break;
+          case 'SET_DURATION':
+            if (payload) {
+              const duration = parseInt(payload.trim());
+              if (!isNaN(duration) && duration > 0) {
+                setDoc(prev => ({ ...prev, duration }));
+              }
+            }
+            break;
           case 'RESEARCH':
             researchTopic();
             break;
           case 'GENERATE_OUTLINE':
             generateOutline();
+            break;
+          case 'GENERATE_SLIDES':
+            onGenerateSlides(doc);
             break;
         }
 
@@ -522,89 +615,89 @@ Be concise, practical, and focused on high-yield medical education. Always be he
     setIsChatProcessing(false);
   };
 
-  // Research the topic across selected sources
-  const researchTopic = async () => {
-    if (!doc.topic.trim() || selectedSources.length === 0) return;
-    
-    setIsResearching(true);
-    setGlobalResearch([]);
-    
-    const promises = selectedSources.map(async (source) => {
-      try {
-        let result: ResearchResult;
-        
-        switch (source) {
-          case 'uptodate': {
-            const res = await searchUpToDate(doc.topic);
-            if (res) {
-              const formatted = formatSearchResults(res);
-              result = { source, content: formatted.summary, keyPoints: formatted.keyPoints, citations: formatted.citations };
-            } else {
-              throw new Error('No results');
-            }
-            break;
-          }
-          case 'mksap': {
-            const res = await searchMKSAP(doc.topic);
-            if (res) {
-              const formatted = formatSearchResults(res);
-              result = { source, content: formatted.summary, keyPoints: formatted.keyPoints, citations: formatted.citations };
-            } else {
-              throw new Error('No results');
-            }
-            break;
-          }
-          case 'perplexity': {
-            const [evidence, guidelines] = await Promise.all([
-              searchMedicalEvidence(doc.topic),
-              getLatestGuidelines(doc.topic),
-            ]);
-            result = {
-              source,
-              content: `## Evidence\n${evidence.summary}\n\n## Guidelines\n${guidelines.summary}`,
-              keyPoints: [...evidence.keyPoints, ...guidelines.keyPoints],
-              citations: [...evidence.citations, ...guidelines.citations],
-            };
-            break;
-          }
-          case 'pubmed': {
-            const res = await searchPubMed(doc.topic);
-            if (res) {
-              const formatted = formatSearchResults(res);
-              result = { source, content: formatted.summary, keyPoints: formatted.keyPoints, citations: formatted.citations };
-            } else {
-              throw new Error('No results');
-            }
-            break;
-          }
-          default:
-            throw new Error('Unknown source');
-        }
-        
-        return result!;
-      } catch (error) {
-        return { source, content: '', keyPoints: [], citations: [], error: String(error) } as ResearchResult;
-      }
-    });
-    
-    const allResults = await Promise.all(promises);
-    setGlobalResearch(allResults.filter(r => !r.error && r.content));
-    setIsResearching(false);
-  };
+// Research the topic across selected sources
+const researchTopic = async () => {
+  if (!doc.topic.trim() || selectedSources.length === 0) return;
 
-  // Generate outline using AI + research context
-  const generateOutline = async () => {
-    if (!doc.topic.trim()) return;
-    
-    setIsGeneratingOutline(true);
+  setIsResearching(true);
+  setGlobalResearch([]);
+
+  const promises = selectedSources.map(async (source) => {
     try {
-      const researchContext = globalResearch.length > 0 
-        ? `\n\nRESEARCH CONTEXT:\n${globalResearch.map(r => 
-            `## ${r.source.toUpperCase()}\n${r.content.slice(0, 2000)}\nKey Points: ${r.keyPoints.join(', ')}`
-          ).join('\n\n')}`
-        : '';
+      let result: ResearchResult;
 
-      const prompt = `You are an expert medical educator creating a Socratic-style lecture.
+      switch (source) {
+        case 'uptodate': {
+          const res = await searchUpToDate(doc.topic);
+          if (res) {
+            const formatted = formatSearchResults(res);
+            result = { source, content: formatted.summary, keyPoints: formatted.keyPoints, citations: formatted.citations };
+          } else {
+            throw new Error('No results');
+          }
+          break;
+        }
+        case 'mksap': {
+          const res = await searchMKSAP(doc.topic);
+          if (res) {
+            const formatted = formatSearchResults(res);
+            result = { source, content: formatted.summary, keyPoints: formatted.keyPoints, citations: formatted.citations };
+          } else {
+            throw new Error('No results');
+          }
+          break;
+        }
+        case 'perplexity': {
+          const [evidence, guidelines] = await Promise.all([
+            searchMedicalEvidence(doc.topic),
+            getLatestGuidelines(doc.topic),
+          ]);
+          result = {
+            source,
+            content: `## Evidence\n${evidence.summary}\n\n## Guidelines\n${guidelines.summary}`,
+            keyPoints: [...evidence.keyPoints, ...guidelines.keyPoints],
+            citations: [...evidence.citations, ...guidelines.citations],
+          };
+          break;
+        }
+        case 'pubmed': {
+          const res = await searchPubMed(doc.topic);
+          if (res) {
+            const formatted = formatSearchResults(res);
+            result = { source, content: formatted.summary, keyPoints: formatted.keyPoints, citations: formatted.citations };
+          } else {
+            throw new Error('No results');
+          }
+          break;
+        }
+        default:
+          throw new Error('Unknown source');
+      }
+
+      return result!;
+    } catch (error) {
+      return { source, content: '', keyPoints: [], citations: [], error: String(error) } as ResearchResult;
+    }
+  });
+
+  const allResults = await Promise.all(promises);
+  setGlobalResearch(allResults.filter(r => !r.error && r.content));
+  setIsResearching(false);
+};
+
+// Generate outline using AI + research context
+const generateOutline = async () => {
+  if (!doc.topic.trim()) return;
+
+  setIsGeneratingOutline(true);
+  try {
+    const researchContext = globalResearch.length > 0
+      ? `\n\nRESEARCH CONTEXT:\n${globalResearch.map(r =>
+        `## ${r.source.toUpperCase()}\n${r.content.slice(0, 2000)}\nKey Points: ${r.keyPoints.join(', ')}`
+      ).join('\n\n')}`
+      : '';
+
+    const prompt = `You are an expert medical educator creating a Socratic-style lecture.
 
 TOPIC: "${doc.topic}"
 AUDIENCE: ${doc.targetAudience}
@@ -624,47 +717,47 @@ Structure so each section naturally leads to the next.
 Return JSON array ONLY:
 [{"title": "...", "type": "intro", "keyPoints": ["..."], "slideCount": 3}]`;
 
-      const response = await generateWithProvider(currentProvider, prompt, [], {});
-      
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const outline = JSON.parse(jsonMatch[0]);
-        const sections: Section[] = outline.map((s: any, i: number) => ({
-          id: `section-${Date.now()}-${i}`,
-          title: s.title,
-          type: s.type || 'concept',
-          content: '',
-          keyPoints: s.keyPoints || [],
-          research: i === 0 ? globalResearch : undefined,
-          slideCount: s.slideCount || 4,
-          isExpanded: i === 0,
-          followUpQuestions: [],
-        }));
+    const response = await generateWithProvider(currentProvider, prompt, [], {});
 
-        setDoc(prev => ({ ...prev, sections }));
-        
-        if (sections.length > 0) {
-          generateSocraticQuestions(sections[0].id, sections);
-        }
+    const jsonMatch = response.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const outline = JSON.parse(jsonMatch[0]);
+      const sections: Section[] = outline.map((s: any, i: number) => ({
+        id: `section-${Date.now()}-${i}`,
+        title: s.title,
+        type: s.type || 'concept',
+        content: '',
+        keyPoints: s.keyPoints || [],
+        research: i === 0 ? globalResearch : undefined,
+        slideCount: s.slideCount || 4,
+        isExpanded: i === 0,
+        followUpQuestions: [],
+      }));
+
+      setDoc(prev => ({ ...prev, sections }));
+
+      if (sections.length > 0) {
+        generateSocraticQuestions(sections[0].id, sections);
       }
-    } catch (error) {
-      console.error('Outline generation failed:', error);
     }
-    setIsGeneratingOutline(false);
-  };
+  } catch (error) {
+    console.error('Outline generation failed:', error);
+  }
+  setIsGeneratingOutline(false);
+};
 
-  // Generate Socratic questions for a section
-  const generateSocraticQuestions = async (sectionId: string, sectionsOverride?: Section[]) => {
-    const sections = sectionsOverride || doc.sections;
-    const sectionIndex = sections.findIndex(s => s.id === sectionId);
-    const section = sections[sectionIndex];
-    if (!section) return;
+// Generate Socratic questions for a section
+const generateSocraticQuestions = async (sectionId: string, sectionsOverride?: Section[]) => {
+  const sections = sectionsOverride || doc.sections;
+  const sectionIndex = sections.findIndex(s => s.id === sectionId);
+  const section = sections[sectionIndex];
+  if (!section) return;
 
-    setGeneratingQuestionsFor(sectionId);
-    try {
-      const nextSections = sections.slice(sectionIndex + 1);
-      
-      const prompt = `You are a master clinical educator using Socratic questioning.
+  setGeneratingQuestionsFor(sectionId);
+  try {
+    const nextSections = sections.slice(sectionIndex + 1);
+
+    const prompt = `You are a master clinical educator using Socratic questioning.
 
 CURRENT SECTION: "${section.title}"
 KEY POINTS: ${section.keyPoints.join(', ')}
@@ -685,42 +778,42 @@ For each:
 
 Return JSON array ONLY.`;
 
-      const response = await generateWithProvider(currentProvider, prompt, [], {});
-      
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const questions = JSON.parse(jsonMatch[0]);
-        const formatted: SocraticQuestion[] = questions.map((q: any, i: number) => ({
-          id: `q-${sectionId}-${i}`,
-          question: q.question,
-          type: q.type || 'why',
-          insight: q.insight,
-          nextTitle: q.nextTitle,
-        }));
+    const response = await generateWithProvider(currentProvider, prompt, [], {});
 
-        setDoc(prev => ({
-          ...prev,
-          sections: prev.sections.map(s =>
-            s.id === sectionId ? { ...s, followUpQuestions: formatted } : s
-          ),
-        }));
-      }
-    } catch (error) {
-      console.error('Question generation failed:', error);
+    const jsonMatch = response.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const questions = JSON.parse(jsonMatch[0]);
+      const formatted: SocraticQuestion[] = questions.map((q: any, i: number) => ({
+        id: `q-${sectionId}-${i}`,
+        question: q.question,
+        type: q.type || 'why',
+        insight: q.insight,
+        nextTitle: q.nextTitle,
+      }));
+
+      setDoc(prev => ({
+        ...prev,
+        sections: prev.sections.map(s =>
+          s.id === sectionId ? { ...s, followUpQuestions: formatted } : s
+        ),
+      }));
     }
-    setGeneratingQuestionsFor(null);
-  };
+  } catch (error) {
+    console.error('Question generation failed:', error);
+  }
+  setGeneratingQuestionsFor(null);
+};
 
-  // Expand section with research + content
-  const expandSection = async (sectionId: string) => {
-    const section = doc.sections.find(s => s.id === sectionId);
-    if (!section) return;
+// Expand section with research + content
+const expandSection = async (sectionId: string) => {
+  const section = doc.sections.find(s => s.id === sectionId);
+  if (!section) return;
 
-    setExpandingSection(sectionId);
-    try {
-      const sectionResearch = await searchMedicalEvidence(`${doc.topic} ${section.title}`);
+  setExpandingSection(sectionId);
+  try {
+    const sectionResearch = await searchMedicalEvidence(`${doc.topic} ${section.title}`);
 
-      const prompt = `You are an expert medical educator writing lecture content.
+    const prompt = `You are an expert medical educator writing lecture content.
 
 TOPIC: ${doc.topic}
 SECTION: "${section.title}"
@@ -733,329 +826,322 @@ ${sectionResearch.summary}
 
 Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
 
-      const response = await generateWithProvider(currentProvider, prompt, [], {});
+    const response = await generateWithProvider(currentProvider, prompt, [], {});
 
-      setDoc(prev => ({
-        ...prev,
-        sections: prev.sections.map(s =>
-          s.id === sectionId
-            ? {
-                ...s,
-                content: response.trim(),
-                research: [{
-                  source: 'perplexity' as ResearchSource,
-                  content: sectionResearch.summary,
-                  keyPoints: sectionResearch.keyPoints,
-                  citations: sectionResearch.citations,
-                }],
-              }
-            : s
-        ),
-      }));
-
-      generateSocraticQuestions(sectionId);
-    } catch (error) {
-      console.error('Section expansion failed:', error);
-    }
-    setExpandingSection(null);
-  };
-
-  // Select question to shape next section
-  const selectQuestion = (sectionId: string, question: SocraticQuestion) => {
-    const sectionIndex = doc.sections.findIndex(s => s.id === sectionId);
-
-    setDoc(prev => {
-      const newSections = [...prev.sections];
-      newSections[sectionIndex] = { ...newSections[sectionIndex], selectedQuestionId: question.id };
-
-      if (sectionIndex < newSections.length - 1) {
-        newSections[sectionIndex + 1] = { ...newSections[sectionIndex + 1], title: question.nextTitle };
-      } else {
-        newSections.push({
-          id: `section-${Date.now()}`,
-          title: question.nextTitle,
-          type: 'concept',
-          content: '',
-          keyPoints: [],
-          slideCount: 4,
-          isExpanded: true,
-          followUpQuestions: [],
-        });
-      }
-
-      return { ...prev, sections: newSections };
-    });
-  };
-
-  const toggleSection = (sectionId: string) => {
     setDoc(prev => ({
       ...prev,
       sections: prev.sections.map(s =>
-        s.id === sectionId ? { ...s, isExpanded: !s.isExpanded } : s
+        s.id === sectionId
+          ? {
+            ...s,
+            content: response.trim(),
+            research: [{
+              source: 'perplexity' as ResearchSource,
+              content: sectionResearch.summary,
+              keyPoints: sectionResearch.keyPoints,
+              citations: sectionResearch.citations,
+            }],
+          }
+          : s
       ),
     }));
-  };
 
-  const removeSection = (sectionId: string) => {
-    setDoc(prev => ({ ...prev, sections: prev.sections.filter(s => s.id !== sectionId) }));
-  };
+    generateSocraticQuestions(sectionId);
+  } catch (error) {
+    console.error('Section expansion failed:', error);
+  }
+  setExpandingSection(null);
+};
 
-  const totalSlides = doc.sections.reduce((sum, s) => sum + s.slideCount, 0);
-  const sectionsWithContent = doc.sections.filter(s => s.content).length;
+// Select question to shape next section
+const selectQuestion = (sectionId: string, question: SocraticQuestion) => {
+  const sectionIndex = doc.sections.findIndex(s => s.id === sectionId);
 
-  return (
-    <div 
-      className="flex-1 flex flex-col bg-zinc-950 overflow-hidden relative"
-      onMouseMove={handleMouseMove}
-    >
-      {/* Collaborative Cursors Overlay */}
-      {showCollaborators && (
-        <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
-          {Object.values(cursors).map(cursor => (
-            <div
-              key={cursor.userId}
-              className="absolute transition-all duration-100 ease-in-out flex items-center gap-1"
-              style={{ left: `${cursor.x}%`, top: `${cursor.y}%` }}
-            >
-              <CursorArrowRaysIcon className="w-5 h-5 -rotate-90" style={{ color: cursor.color }} />
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full text-white bg-zinc-900/80 backdrop-blur" 
-                    style={{ border: `1px solid ${cursor.color}` }}>
-                {cursor.userName}
+  setDoc(prev => {
+    const newSections = [...prev.sections];
+    newSections[sectionIndex] = { ...newSections[sectionIndex], selectedQuestionId: question.id };
+
+    if (sectionIndex < newSections.length - 1) {
+      newSections[sectionIndex + 1] = { ...newSections[sectionIndex + 1], title: question.nextTitle };
+    } else {
+      newSections.push({
+        id: `section-${Date.now()}`,
+        title: question.nextTitle,
+        type: 'concept',
+        content: '',
+        keyPoints: [],
+        slideCount: 4,
+        isExpanded: true,
+        followUpQuestions: [],
+      });
+    }
+
+    return { ...prev, sections: newSections };
+  });
+};
+
+const toggleSection = (sectionId: string) => {
+  setDoc(prev => ({
+    ...prev,
+    sections: prev.sections.map(s =>
+      s.id === sectionId ? { ...s, isExpanded: !s.isExpanded } : s
+    ),
+  }));
+};
+
+const removeSection = (sectionId: string) => {
+  setDoc(prev => ({ ...prev, sections: prev.sections.filter(s => s.id !== sectionId) }));
+};
+
+const totalSlides = doc.sections.reduce((sum, s) => sum + s.slideCount, 0);
+const sectionsWithContent = doc.sections.filter(s => s.content).length;
+
+return (
+  <div
+    className="flex-1 flex flex-col bg-zinc-950 overflow-hidden relative"
+    onMouseMove={handleMouseMove}
+  >
+    {/* Collaborative Cursors Overlay */}
+    {showCollaborators && (
+      <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
+        {Object.values(cursors).map(cursor => (
+          <div
+            key={cursor.userId}
+            className="absolute transition-all duration-100 ease-in-out flex items-center gap-1"
+            style={{ left: `${cursor.x}%`, top: `${cursor.y}%` }}
+          >
+            <CursorArrowRaysIcon className="w-5 h-5 -rotate-90" style={{ color: cursor.color }} />
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full text-white bg-zinc-900/80 backdrop-blur"
+              style={{ border: `1px solid ${cursor.color}` }}>
+              {cursor.userName}
+            </span>
+          </div>
+        ))}
+      </div>
+    )}
+
+    {/* Header */}
+    <div className="flex-shrink-0 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-xl">
+      <div className="flex items-center justify-between px-6 py-4">
+        <div className="flex items-center gap-4">
+          <div className="p-2 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-xl">
+            <AcademicCapIcon className="w-6 h-6 text-cyan-400" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-white">PRESENTGENIUS</h1>
+            <p className="text-sm text-zinc-500">Interactive Canvas • By Dr. Swisher</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* AI Provider Selector */}
+          <div className="flex items-center gap-1 bg-zinc-800 rounded-lg p-1">
+            {AI_PROVIDERS.map(p => (
+              <button
+                key={p.id}
+                onClick={() => onProviderChange(p.id)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${currentProvider === p.id
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white'
+                  : 'text-zinc-400 hover:text-white'
+                  }`}
+              >
+                <span>{p.icon}</span>
+                <span className="hidden sm:inline">{p.name}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Collaborators Toggle */}
+          <button
+            onClick={() => setShowCollaborators(!showCollaborators)}
+            className={`p-2 rounded-lg hover:bg-zinc-800 transition-all ${showCollaborators ? 'text-purple-400' : 'text-zinc-400'} relative`}
+            title="Toggle Collaborators"
+          >
+            <CursorArrowRaysIcon className="w-5 h-5" />
+            {activeUsers.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                {activeUsers.length}
               </span>
+            )}
+          </button>
+
+          {/* AI Suggestions Toggle */}
+          <button
+            onClick={() => setShowSuggestions(!showSuggestions)}
+            className={`p-2 rounded-lg hover:bg-zinc-800 transition-all ${aiSuggestions.length > 0 ? 'text-cyan-400' : 'text-zinc-400'} relative`}
+            title="AI Suggestions"
+          >
+            <SparklesIcon className="w-5 h-5" />
+            {aiSuggestions.length > 0 && !showSuggestions && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                {aiSuggestions.length}
+              </span>
+            )}
+          </button>
+
+          {/* Progress Bar */}
+          <div className="flex items-center gap-2">
+            <div className="w-24 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 transition-all duration-500"
+                style={{ width: `${getProgress()}%` }}
+              />
             </div>
-          ))}
+            <span className="text-xs text-zinc-400 w-8">{getProgress()}%</span>
+          </div>
+
+          <div className="h-6 w-px bg-zinc-800" />
+
+          <button
+            onClick={() => onGenerateSlides(doc)}
+            disabled={doc.sections.length === 0}
+            className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-lg text-sm font-medium
+                         text-white flex items-center gap-2 disabled:opacity-50 hover:shadow-lg transition-all"
+          >
+            <PlayIcon className="w-4 h-4" />
+            Generate
+          </button>
+
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800"
+          >
+            <Cog6ToothIcon className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Visual Timeline */}
+      {doc.sections.length > 0 && (
+        <div className="border-t border-zinc-800 bg-zinc-900/30 px-6 py-3">
+          <div className="flex items-center gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-zinc-800">
+            {getTimelineNodes().map((node, i) => (
+              <div key={node.sectionId} className="flex items-center gap-2 flex-shrink-0">
+                <div
+                  className={`
+                      w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold cursor-pointer
+                      transition-all transform hover:scale-105 ${node.completed
+                      ? 'bg-gradient-to-br from-cyan-500 to-green-500 text-white shadow-lg shadow-cyan-500/20'
+                      : node.active
+                        ? 'bg-gradient-to-br from-purple-500 to-pink-500 text-white ring-2 ring-purple-400/50 shadow-lg shadow-purple-500/20'
+                        : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                    }
+                    `}
+                  title={node.title}
+                  onClick={() => {
+                    setActiveSectionId(node.sectionId);
+                    toggleSection(node.sectionId);
+                  }}
+                >
+                  {SECTION_ICONS[node.type]}
+                </div>
+                {i < doc.sections.length - 1 && (
+                  <div className={`w-12 h-0.5 rounded-full ${node.completed ? 'bg-cyan-500/50' : 'bg-zinc-800'
+                    }`} />
+                )}
+              </div>
+            ))}
+            <button
+              onClick={() => {
+                const newSection: Section = {
+                  id: `section-${Date.now()}`,
+                  title: 'New Section',
+                  type: 'concept',
+                  content: '',
+                  keyPoints: [],
+                  slideCount: 4,
+                  isExpanded: true,
+                  followUpQuestions: [],
+                };
+                setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
+              }}
+              className="w-8 h-8 rounded-full border border-dashed border-zinc-600 flex items-center justify-center text-zinc-500 hover:border-cyan-500 hover:text-cyan-500 transition-colors"
+            >
+              <PlusIcon className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex-shrink-0 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-xl">
-        <div className="flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-4">
-            <div className="p-2 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-xl">
-              <AcademicCapIcon className="w-6 h-6 text-cyan-400" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">PRESENTGENIUS</h1>
-              <p className="text-sm text-zinc-500">Interactive Canvas • By Dr. Swisher</p>
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="px-6 pb-4 border-t border-zinc-800 pt-4 bg-zinc-900/50">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-medium text-zinc-400">Scraper Service</div>
+            <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${scraperStatus ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+              }`}>
+              {scraperStatus ? '● Online' : '○ Offline'}
             </div>
           </div>
-
-          <div className="flex items-center gap-3">
-            {/* AI Provider Selector */}
-            <div className="flex items-center gap-1 bg-zinc-800 rounded-lg p-1">
-              {AI_PROVIDERS.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => onProviderChange(p.id)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
-                    currentProvider === p.id
-                      ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white'
-                      : 'text-zinc-400 hover:text-white'
-                  }`}
-                >
-                  <span>{p.icon}</span>
-                  <span className="hidden sm:inline">{p.name}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Collaborators Toggle */}
+          <div className="flex gap-2 mt-2">
             <button
-              onClick={() => setShowCollaborators(!showCollaborators)}
-              className={`p-2 rounded-lg hover:bg-zinc-800 transition-all ${showCollaborators ? 'text-purple-400' : 'text-zinc-400'} relative`}
-              title="Toggle Collaborators"
+              onClick={() => handleLogin('uptodate')}
+              disabled={isLoggingIn || !scraperStatus}
+              className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${scraperStatus?.uptodate_logged_in
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                }`}
             >
-              <CursorArrowRaysIcon className="w-5 h-5" />
-              {activeUsers.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
-                  {activeUsers.length}
-                </span>
-              )}
+              📚 {scraperStatus?.uptodate_logged_in ? 'UpToDate ✓' : 'Login UpToDate'}
             </button>
-
-            {/* AI Suggestions Toggle */}
             <button
-              onClick={() => setShowSuggestions(!showSuggestions)}
-              className={`p-2 rounded-lg hover:bg-zinc-800 transition-all ${aiSuggestions.length > 0 ? 'text-cyan-400' : 'text-zinc-400'} relative`}
-              title="AI Suggestions"
+              onClick={() => handleLogin('mksap')}
+              disabled={isLoggingIn || !scraperStatus}
+              className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${scraperStatus?.mksap_logged_in
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                }`}
             >
-              <SparklesIcon className="w-5 h-5" />
-              {aiSuggestions.length > 0 && !showSuggestions && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
-                  {aiSuggestions.length}
-                </span>
-              )}
-            </button>
-
-            {/* Progress Bar */}
-            <div className="flex items-center gap-2">
-              <div className="w-24 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 transition-all duration-500"
-                  style={{ width: `${getProgress()}%` }}
-                />
-              </div>
-              <span className="text-xs text-zinc-400 w-8">{getProgress()}%</span>
-            </div>
-
-            <div className="h-6 w-px bg-zinc-800" />
-            
-            <button
-              onClick={() => onGenerateSlides(doc)}
-              disabled={doc.sections.length === 0}
-              className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-lg text-sm font-medium
-                         text-white flex items-center gap-2 disabled:opacity-50 hover:shadow-lg transition-all"
-            >
-              <PlayIcon className="w-4 h-4" />
-              Generate
-            </button>
-
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800"
-            >
-              <Cog6ToothIcon className="w-5 h-5" />
+              🩺 {scraperStatus?.mksap_logged_in ? 'MKSAP ✓' : 'Login MKSAP'}
             </button>
           </div>
         </div>
+      )}
+    </div>
 
-        {/* Visual Timeline */}
-        {doc.sections.length > 0 && (
-          <div className="border-t border-zinc-800 bg-zinc-900/30 px-6 py-3">
-            <div className="flex items-center gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-zinc-800">
-              {getTimelineNodes().map((node, i) => (
-                <div key={node.sectionId} className="flex items-center gap-2 flex-shrink-0">
-                  <div
-                    className={`
-                      w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold cursor-pointer
-                      transition-all transform hover:scale-105 ${
-                        node.completed
-                          ? 'bg-gradient-to-br from-cyan-500 to-green-500 text-white shadow-lg shadow-cyan-500/20'
-                          : node.active
-                            ? 'bg-gradient-to-br from-purple-500 to-pink-500 text-white ring-2 ring-purple-400/50 shadow-lg shadow-purple-500/20'
-                            : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:border-zinc-500'
-                      }
-                    `}
-                    title={node.title}
-                    onClick={() => {
-                      setActiveSectionId(node.sectionId);
-                      toggleSection(node.sectionId);
-                    }}
-                  >
-                    {SECTION_ICONS[node.type]}
-                  </div>
-                  {i < doc.sections.length - 1 && (
-                    <div className={`w-12 h-0.5 rounded-full ${
-                      node.completed ? 'bg-cyan-500/50' : 'bg-zinc-800'
-                    }`} />
-                  )}
-                </div>
-              ))}
-              <button 
-                onClick={() => {
-                  const newSection: Section = {
-                    id: `section-${Date.now()}`,
-                    title: 'New Section',
-                    type: 'concept',
-                    content: '',
-                    keyPoints: [],
-                    slideCount: 4,
-                    isExpanded: true,
-                    followUpQuestions: [],
-                  };
-                  setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
-                }}
-                className="w-8 h-8 rounded-full border border-dashed border-zinc-600 flex items-center justify-center text-zinc-500 hover:border-cyan-500 hover:text-cyan-500 transition-colors"
-              >
-                <PlusIcon className="w-4 h-4" />
-              </button>
+    {/* Main Content - 3 Column Layout */}
+    <div className="flex-1 overflow-hidden flex relative">
+      {/* AI Suggestions Panel (Floating) */}
+      {showSuggestions && aiSuggestions.length > 0 && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 w-96 bg-zinc-900/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-4">
+          <div className="p-3 border-b border-zinc-800 flex items-center justify-between bg-gradient-to-r from-cyan-900/20 to-purple-900/20">
+            <div className="flex items-center gap-2">
+              <SparklesIcon className="w-4 h-4 text-cyan-400" />
+              <span className="text-sm font-bold text-white">AI Suggestions</span>
             </div>
+            <button onClick={() => setShowSuggestions(false)} className="text-zinc-500 hover:text-white">
+              <XMarkIcon className="w-4 h-4" />
+            </button>
           </div>
-        )}
-
-        {/* Settings Panel */}
-        {showSettings && (
-          <div className="px-6 pb-4 border-t border-zinc-800 pt-4 bg-zinc-900/50">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-medium text-zinc-400">Scraper Service</div>
-              <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
-                scraperStatus ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-              }`}>
-                {scraperStatus ? '● Online' : '○ Offline'}
-              </div>
-            </div>
-            <div className="flex gap-2 mt-2">
-              <button
-                onClick={() => handleLogin('uptodate')}
-                disabled={isLoggingIn || !scraperStatus}
-                className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${
-                  scraperStatus?.uptodate_logged_in
-                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                    : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                }`}
-              >
-                📚 {scraperStatus?.uptodate_logged_in ? 'UpToDate ✓' : 'Login UpToDate'}
-              </button>
-              <button
-                onClick={() => handleLogin('mksap')}
-                disabled={isLoggingIn || !scraperStatus}
-                className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${
-                  scraperStatus?.mksap_logged_in
-                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                    : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                }`}
-              >
-                🩺 {scraperStatus?.mksap_logged_in ? 'MKSAP ✓' : 'Login MKSAP'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Main Content - 3 Column Layout */}
-      <div className="flex-1 overflow-hidden flex relative">
-        {/* AI Suggestions Panel (Floating) */}
-        {showSuggestions && aiSuggestions.length > 0 && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 w-96 bg-zinc-900/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-4">
-            <div className="p-3 border-b border-zinc-800 flex items-center justify-between bg-gradient-to-r from-cyan-900/20 to-purple-900/20">
-              <div className="flex items-center gap-2">
-                <SparklesIcon className="w-4 h-4 text-cyan-400" />
-                <span className="text-sm font-bold text-white">AI Suggestions</span>
-              </div>
-              <button onClick={() => setShowSuggestions(false)} className="text-zinc-500 hover:text-white">
-                <XMarkIcon className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="max-h-80 overflow-y-auto p-2 space-y-2">
-              {aiSuggestions.map(suggestion => (
-                <div key={suggestion.id} className="p-3 bg-zinc-800/50 rounded-xl hover:bg-zinc-800 transition-colors border border-zinc-700/50">
-                  <div className="flex justify-between items-start mb-1">
-                    <h4 className="text-sm font-medium text-white">{suggestion.title}</h4>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${
-                      suggestion.priority === 'high' ? 'bg-red-500/20 text-red-400' :
-                      suggestion.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+          <div className="max-h-80 overflow-y-auto p-2 space-y-2">
+            {aiSuggestions.map(suggestion => (
+              <div key={suggestion.id} className="p-3 bg-zinc-800/50 rounded-xl hover:bg-zinc-800 transition-colors border border-zinc-700/50">
+                <div className="flex justify-between items-start mb-1">
+                  <h4 className="text-sm font-medium text-white">{suggestion.title}</h4>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${suggestion.priority === 'high' ? 'bg-red-500/20 text-red-400' :
+                    suggestion.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
                       'bg-blue-500/20 text-blue-400'
                     }`}>{suggestion.priority}</span>
-                  </div>
-                  <p className="text-xs text-zinc-400 mb-2">{suggestion.description}</p>
-                  <button
-                    onClick={() => {
-                      suggestion.action();
-                      setAiSuggestions(prev => prev.filter(s => s.id !== suggestion.id));
-                    }}
-                    className="w-full py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-lg transition-colors flex items-center justify-center gap-1"
-                  >
-                    <PlusIcon className="w-3 h-3" /> Apply Suggestion
-                  </button>
                 </div>
-              ))}
-            </div>
+                <p className="text-xs text-zinc-400 mb-2">{suggestion.description}</p>
+                <button
+                  onClick={() => {
+                    suggestion.action();
+                    setAiSuggestions(prev => prev.filter(s => s.id !== suggestion.id));
+                  }}
+                  className="w-full py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-lg transition-colors flex items-center justify-center gap-1"
+                >
+                  <PlusIcon className="w-3 h-3" /> Apply Suggestion
+                </button>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Left Panel - Setup & Research */}
-        <div className={`${leftPanelCollapsed ? 'w-0 overflow-hidden' : 'w-72'} transition-all duration-300 flex-shrink-0 relative`}>
-          <div className={`h-full w-72 border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${leftPanelCollapsed ? 'invisible' : 'visible'}`}>
+      {/* Left Panel - Setup & Research */}
+      <div className={`${leftPanelCollapsed ? 'w-0 overflow-hidden' : 'w-72'} transition-all duration-300 flex-shrink-0 relative`}>
+        <div className={`h-full w-72 border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${leftPanelCollapsed ? 'invisible' : 'visible'}`}>
           <div className="p-4 space-y-4 overflow-y-auto flex-1">
             {/* Topic */}
             <div>
@@ -1109,11 +1195,10 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                     <button
                       key={source.id}
                       onClick={() => toggleSource(source.id)}
-                      className={`px-2 py-1 rounded text-xs flex items-center gap-1 transition-all ${
-                        isSelected
-                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
-                          : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
-                      }`}
+                      className={`px-2 py-1 rounded text-xs flex items-center gap-1 transition-all ${isSelected
+                        ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
+                        : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                        }`}
                     >
                       <span>{source.icon}</span>
                       <span>{source.name}</span>
@@ -1180,9 +1265,8 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                         setActiveSectionId(section.id);
                         toggleSection(section.id);
                       }}
-                      className={`w-full text-left p-2 rounded-lg transition-all flex items-center gap-2 ${
-                        section.isExpanded ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
-                      }`}
+                      className={`w-full text-left p-2 rounded-lg transition-all flex items-center gap-2 ${section.isExpanded ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
+                        }`}
                     >
                       <span className="text-sm">{SECTION_ICONS[section.type]}</span>
                       <div className="flex-1 min-w-0">
@@ -1195,226 +1279,224 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
               </div>
             )}
           </div>
-          </div>
         </div>
+      </div>
 
-        {/* Left Toggle Button */}
-        <button
-          onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
-          className="flex-shrink-0 w-6 bg-zinc-800 hover:bg-cyan-500/30 border-x border-zinc-700 flex items-center justify-center transition-colors group"
-          title={leftPanelCollapsed ? 'Show Setup Panel' : 'Hide Setup Panel'}
-        >
-          {leftPanelCollapsed ? (
-            <ChevronDoubleRightIcon className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400" />
-          ) : (
-            <ChevronDoubleLeftIcon className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400" />
-          )}
-        </button>
+      {/* Left Toggle Button */}
+      <button
+        onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+        className="flex-shrink-0 w-6 bg-zinc-800 hover:bg-cyan-500/30 border-x border-zinc-700 flex items-center justify-center transition-colors group"
+        title={leftPanelCollapsed ? 'Show Setup Panel' : 'Hide Setup Panel'}
+      >
+        {leftPanelCollapsed ? (
+          <ChevronDoubleRightIcon className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400" />
+        ) : (
+          <ChevronDoubleLeftIcon className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400" />
+        )}
+      </button>
 
-        {/* Center Panel - Sections Editor */}
-        <div className="flex-1 overflow-y-auto p-4 min-w-0" onDragOver={(e) => e.preventDefault()}>
-          {doc.sections.length === 0 ? (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center max-w-md">
-                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center">
-                  <LightBulbIcon className="w-8 h-8 text-cyan-400" />
+      {/* Center Panel - Sections Editor */}
+      <div className="flex-1 overflow-y-auto p-4 min-w-0" onDragOver={(e) => e.preventDefault()}>
+        {doc.sections.length === 0 ? (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center max-w-md">
+              <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center">
+                <LightBulbIcon className="w-8 h-8 text-cyan-400" />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">Build Your Lecture</h2>
+              <p className="text-zinc-400 text-sm mb-4">
+                Enter a topic on the left, or chat with the assistant on the right to get started.
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-left text-xs">
+                <div className="p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
+                  <div className="text-orange-400 font-medium">📚 UpToDate</div>
                 </div>
-                <h2 className="text-xl font-bold text-white mb-2">Build Your Lecture</h2>
-                <p className="text-zinc-400 text-sm mb-4">
-                  Enter a topic on the left, or chat with the assistant on the right to get started.
-                </p>
-                <div className="grid grid-cols-2 gap-2 text-left text-xs">
-                  <div className="p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
-                    <div className="text-orange-400 font-medium">📚 UpToDate</div>
-                  </div>
-                  <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                    <div className="text-blue-400 font-medium">🩺 MKSAP 19</div>
-                  </div>
-                  <div className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
-                    <div className="text-purple-400 font-medium">🔮 Perplexity</div>
-                  </div>
-                  <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
-                    <div className="text-green-400 font-medium">📄 PubMed</div>
-                  </div>
+                <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                  <div className="text-blue-400 font-medium">🩺 MKSAP 19</div>
+                </div>
+                <div className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                  <div className="text-purple-400 font-medium">🔮 Perplexity</div>
+                </div>
+                <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
+                  <div className="text-green-400 font-medium">📄 PubMed</div>
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="space-y-3 max-w-3xl mx-auto pb-10">
-              {doc.sections.map((section, index) => (
-                <div
-                  key={section.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, index)}
-                  onDragOver={(e) => handleDragOver(e, index)}
-                  onDrop={(e) => handleDrop(e, index)}
-                  className={`rounded-xl border transition-all duration-300 ${
-                    section.isExpanded ? 'bg-zinc-900 border-zinc-700 shadow-xl' : 'bg-zinc-900/50 border-zinc-800'
+          </div>
+        ) : (
+          <div className="space-y-3 max-w-3xl mx-auto pb-10">
+            {doc.sections.map((section, index) => (
+              <div
+                key={section.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDrop={(e) => handleDrop(e, index)}
+                className={`rounded-xl border transition-all duration-300 ${section.isExpanded ? 'bg-zinc-900 border-zinc-700 shadow-xl' : 'bg-zinc-900/50 border-zinc-800'
                   } ${dragOverIndex === index ? 'border-t-2 border-t-cyan-500 mt-4' : ''} ${draggedItem?.id === section.id ? 'opacity-50' : ''}`}
+              >
+                {/* Section Header */}
+                <div
+                  className="p-3 flex items-center gap-3 cursor-pointer group"
                 >
-                  {/* Section Header */}
                   <div
-                    className="p-3 flex items-center gap-3 cursor-pointer group"
+                    className="cursor-move text-zinc-600 group-hover:text-zinc-400"
+                    title="Drag to reorder"
                   >
-                    <div 
-                      className="cursor-move text-zinc-600 group-hover:text-zinc-400"
-                      title="Drag to reorder"
-                    >
-                      <ArrowsUpDownIcon className="w-4 h-4" />
-                    </div>
-                    
-                    <div className="flex-1 flex items-center gap-3" onClick={() => toggleSection(section.id)}>
-                      <span className="text-xl">{SECTION_ICONS[section.type]}</span>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-zinc-500">Section {index + 1}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 rounded-full text-zinc-400 uppercase">{section.type}</span>
-                        </div>
-                        <div className="text-base font-medium text-white">{section.title}</div>
-                      </div>
-                      <span className="text-xs text-zinc-500 flex items-center gap-1">
-                        <CubeIcon className="w-3 h-3" /> {section.slideCount}
-                      </span>
-                      {section.isExpanded ? (
-                        <ChevronDownIcon className="w-4 h-4 text-zinc-500" />
-                      ) : (
-                        <ChevronRightIcon className="w-4 h-4 text-zinc-500" />
-                      )}
-                    </div>
+                    <ArrowsUpDownIcon className="w-4 h-4" />
                   </div>
 
-                  {/* Expanded Content */}
-                  {section.isExpanded && (
-                    <div className="px-3 pb-3 space-y-3">
-                      {/* Key Points */}
-                      <div className="flex flex-wrap gap-1.5 pl-7">
-                        {section.keyPoints.map((point, i) => (
-                          <span key={i} className="px-2 py-0.5 bg-zinc-800 rounded text-xs text-zinc-300 border border-zinc-700">
-                            {point}
-                          </span>
-                        ))}
+                  <div className="flex-1 flex items-center gap-3" onClick={() => toggleSection(section.id)}>
+                    <span className="text-xl">{SECTION_ICONS[section.type]}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-500">Section {index + 1}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 rounded-full text-zinc-400 uppercase">{section.type}</span>
                       </div>
-
-                      {/* Content */}
-                      {section.content ? (
-                        <div className="pl-7">
-                          <div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700/50">
-                            <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{section.content}</p>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => expandSection(section.id)}
-                          disabled={expandingSection === section.id}
-                          className="w-full ml-7 py-3 border border-dashed border-zinc-700 rounded-lg text-zinc-500 text-sm
-                                     hover:border-purple-500/50 hover:text-purple-400 flex items-center justify-center gap-2 transition-all bg-zinc-800/20"
-                        >
-                          {expandingSection === section.id ? (
-                            <><ArrowPathIcon className="w-4 h-4 animate-spin" /> Writing content...</>
-                          ) : (
-                            <><SparklesIcon className="w-4 h-4" /> Expand with AI</>
-                          )}
-                        </button>
-                      )}
-
-                      {/* Socratic Questions */}
-                      {section.followUpQuestions.length > 0 && (
-                        <div className="pt-3 border-t border-zinc-800 pl-7">
-                          <div className="text-xs text-zinc-400 mb-2 flex items-center gap-1">
-                            <QuestionMarkCircleIcon className="w-3 h-3" /> Socratic Questions
-                          </div>
-                          <div className="space-y-1.5">
-                            {section.followUpQuestions.slice(0, 3).map((q) => {
-                              const style = QUESTION_STYLES[q.type];
-                              const isSelected = section.selectedQuestionId === q.id;
-                              return (
-                                <button
-                                  key={q.id}
-                                  onClick={() => selectQuestion(section.id, q)}
-                                  className={`w-full text-left p-2.5 rounded-lg text-xs transition-all flex items-start gap-2 ${
-                                    isSelected
-                                      ? 'bg-purple-500/20 border border-purple-500/50 ring-1 ring-purple-500/20'
-                                      : 'bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800'
-                                  }`}
-                                >
-                                  <span className="text-base mt-0.5">{style.icon}</span>
-                                  <div>
-                                    <div className="font-medium text-zinc-200">{q.question}</div>
-                                    <div className="text-[10px] text-zinc-500 mt-0.5">{q.insight}</div>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Actions */}
-                      <div className="flex justify-between items-center pl-7 pt-1">
-                        <button
-                          onClick={() => generateSocraticQuestions(section.id)}
-                          disabled={generatingQuestionsFor === section.id}
-                          className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 px-2 py-1 rounded hover:bg-purple-500/10"
-                        >
-                          {generatingQuestionsFor === section.id ? (
-                            <ArrowPathIcon className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <ArrowPathIcon className="w-3 h-3" />
-                          )}
-                          Regenerate Questions
-                        </button>
-                        <button
-                          onClick={() => removeSection(section.id)}
-                          className="text-xs text-zinc-500 hover:text-red-400 flex items-center gap-1 px-2 py-1 rounded hover:bg-red-500/10"
-                        >
-                          <TrashIcon className="w-3 h-3" /> Remove Section
-                        </button>
-                      </div>
+                      <div className="text-base font-medium text-white">{section.title}</div>
                     </div>
-                  )}
+                    <span className="text-xs text-zinc-500 flex items-center gap-1">
+                      <CubeIcon className="w-3 h-3" /> {section.slideCount}
+                    </span>
+                    {section.isExpanded ? (
+                      <ChevronDownIcon className="w-4 h-4 text-zinc-500" />
+                    ) : (
+                      <ChevronRightIcon className="w-4 h-4 text-zinc-500" />
+                    )}
+                  </div>
                 </div>
-              ))}
 
-              {/* Add Section */}
-              <button
-                onClick={() => {
-                  const newSection: Section = {
-                    id: `section-${Date.now()}`,
-                    title: 'New Section',
-                    type: 'concept',
-                    content: '',
-                    keyPoints: [],
-                    slideCount: 4,
-                    isExpanded: true,
-                    followUpQuestions: [],
-                  };
-                  setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
-                }}
-                className="w-full py-4 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-sm
+                {/* Expanded Content */}
+                {section.isExpanded && (
+                  <div className="px-3 pb-3 space-y-3">
+                    {/* Key Points */}
+                    <div className="flex flex-wrap gap-1.5 pl-7">
+                      {section.keyPoints.map((point, i) => (
+                        <span key={i} className="px-2 py-0.5 bg-zinc-800 rounded text-xs text-zinc-300 border border-zinc-700">
+                          {point}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Content */}
+                    {section.content ? (
+                      <div className="pl-7">
+                        <div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700/50">
+                          <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{section.content}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => expandSection(section.id)}
+                        disabled={expandingSection === section.id}
+                        className="w-full ml-7 py-3 border border-dashed border-zinc-700 rounded-lg text-zinc-500 text-sm
+                                     hover:border-purple-500/50 hover:text-purple-400 flex items-center justify-center gap-2 transition-all bg-zinc-800/20"
+                      >
+                        {expandingSection === section.id ? (
+                          <><ArrowPathIcon className="w-4 h-4 animate-spin" /> Writing content...</>
+                        ) : (
+                          <><SparklesIcon className="w-4 h-4" /> Expand with AI</>
+                        )}
+                      </button>
+                    )}
+
+                    {/* Socratic Questions */}
+                    {section.followUpQuestions.length > 0 && (
+                      <div className="pt-3 border-t border-zinc-800 pl-7">
+                        <div className="text-xs text-zinc-400 mb-2 flex items-center gap-1">
+                          <QuestionMarkCircleIcon className="w-3 h-3" /> Socratic Questions
+                        </div>
+                        <div className="space-y-1.5">
+                          {section.followUpQuestions.slice(0, 3).map((q) => {
+                            const style = QUESTION_STYLES[q.type];
+                            const isSelected = section.selectedQuestionId === q.id;
+                            return (
+                              <button
+                                key={q.id}
+                                onClick={() => selectQuestion(section.id, q)}
+                                className={`w-full text-left p-2.5 rounded-lg text-xs transition-all flex items-start gap-2 ${isSelected
+                                  ? 'bg-purple-500/20 border border-purple-500/50 ring-1 ring-purple-500/20'
+                                  : 'bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800'
+                                  }`}
+                              >
+                                <span className="text-base mt-0.5">{style.icon}</span>
+                                <div>
+                                  <div className="font-medium text-zinc-200">{q.question}</div>
+                                  <div className="text-[10px] text-zinc-500 mt-0.5">{q.insight}</div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex justify-between items-center pl-7 pt-1">
+                      <button
+                        onClick={() => generateSocraticQuestions(section.id)}
+                        disabled={generatingQuestionsFor === section.id}
+                        className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 px-2 py-1 rounded hover:bg-purple-500/10"
+                      >
+                        {generatingQuestionsFor === section.id ? (
+                          <ArrowPathIcon className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <ArrowPathIcon className="w-3 h-3" />
+                        )}
+                        Regenerate Questions
+                      </button>
+                      <button
+                        onClick={() => removeSection(section.id)}
+                        className="text-xs text-zinc-500 hover:text-red-400 flex items-center gap-1 px-2 py-1 rounded hover:bg-red-500/10"
+                      >
+                        <TrashIcon className="w-3 h-3" /> Remove Section
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Add Section */}
+            <button
+              onClick={() => {
+                const newSection: Section = {
+                  id: `section-${Date.now()}`,
+                  title: 'New Section',
+                  type: 'concept',
+                  content: '',
+                  keyPoints: [],
+                  slideCount: 4,
+                  isExpanded: true,
+                  followUpQuestions: [],
+                };
+                setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
+              }}
+              className="w-full py-4 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-sm
                            hover:border-cyan-500/50 hover:text-cyan-400 flex items-center justify-center gap-2 transition-all hover:bg-zinc-900"
-              >
-                <PlusIcon className="w-5 h-5" /> Add Section
-              </button>
-            </div>
-          )}
-        </div>
+            >
+              <PlusIcon className="w-5 h-5" /> Add Section
+            </button>
+          </div>
+        )}
+      </div>
 
-        {/* Right Toggle Button */}
-        <button
-          onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-          className="flex-shrink-0 w-6 bg-zinc-800 hover:bg-purple-500/30 border-x border-zinc-700 flex items-center justify-center transition-colors group"
-          title={rightPanelCollapsed ? 'Show Chat Panel' : 'Hide Chat Panel'}
-        >
-          {rightPanelCollapsed ? (
-            <ChevronDoubleLeftIcon className="w-4 h-4 text-zinc-500 group-hover:text-purple-400" />
-          ) : (
-            <ChevronDoubleRightIcon className="w-4 h-4 text-zinc-500 group-hover:text-purple-400" />
-          )}
-        </button>
+      {/* Right Toggle Button */}
+      <button
+        onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+        className="flex-shrink-0 w-6 bg-zinc-800 hover:bg-purple-500/30 border-x border-zinc-700 flex items-center justify-center transition-colors group"
+        title={rightPanelCollapsed ? 'Show Chat Panel' : 'Hide Chat Panel'}
+      >
+        {rightPanelCollapsed ? (
+          <ChevronDoubleLeftIcon className="w-4 h-4 text-zinc-500 group-hover:text-purple-400" />
+        ) : (
+          <ChevronDoubleRightIcon className="w-4 h-4 text-zinc-500 group-hover:text-purple-400" />
+        )}
+      </button>
 
-        {/* Right Panel - Chat Assistant */}
-        <div className={`${rightPanelCollapsed ? 'w-0 overflow-hidden' : 'w-80'} transition-all duration-300 flex-shrink-0`}>
-          <div className={`h-full w-80 border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${rightPanelCollapsed ? 'invisible' : 'visible'}`}>
+      {/* Right Panel - Chat Assistant */}
+      <div className={`${rightPanelCollapsed ? 'w-0 overflow-hidden' : 'w-80'} transition-all duration-300 flex-shrink-0`}>
+        <div className={`h-full w-80 border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${rightPanelCollapsed ? 'invisible' : 'visible'}`}>
           {/* Chat Header */}
           <div className="flex-shrink-0 p-3 border-b border-zinc-800">
             <div className="flex items-center gap-2">
@@ -1431,25 +1513,12 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
           {/* Chat Messages */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {chatMessages.map((msg) => (
-              <div
+              <ChatMessage
                 key={msg.id}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[90%] p-2.5 rounded-xl text-sm ${
-                    msg.role === 'user'
-                      ? 'bg-cyan-500/20 text-cyan-100'
-                      : 'bg-zinc-800 text-zinc-300'
-                  }`}
-                >
-                  {msg.content}
-                  {msg.action && (
-                    <div className="mt-1.5 pt-1.5 border-t border-zinc-700/50">
-                      <span className="text-xs text-purple-400">✓ Action: {msg.action}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
+                content={msg.content}
+                role={msg.role}
+                action={msg.action}
+              />
             ))}
             {isChatProcessing && (
               <div className="flex justify-start">
@@ -1479,33 +1548,47 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
           </div>
 
           {/* Chat Input */}
-          <div className="flex-shrink-0 p-3 border-t border-zinc-800">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleChatSubmit()}
-                placeholder="Ask or instruct..."
-                disabled={isChatProcessing}
-                className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm
-                           placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
-              />
+          <div className="flex-shrink-0 p-4 border-t border-zinc-800 bg-zinc-900/80 backdrop-blur-sm">
+            <div className="flex gap-2 items-end">
+              <div className="flex-1 bg-zinc-800 rounded-xl border border-zinc-700 focus-within:border-cyan-500/50 focus-within:ring-2 focus-within:ring-cyan-500/20 transition-all">
+                <TextareaAutosize
+                  minRows={1}
+                  maxRows={6}
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleChatSubmit();
+                    }
+                  }}
+                  placeholder="Ask Dr. Swisher..."
+                  disabled={isChatProcessing}
+                  className="w-full px-4 py-3 bg-transparent text-white text-sm placeholder:text-zinc-500 focus:outline-none resize-none"
+                />
+              </div>
               <button
                 onClick={() => handleChatSubmit()}
                 disabled={!chatInput.trim() || isChatProcessing}
-                className="p-2 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-lg text-white
-                           disabled:opacity-50 hover:shadow-lg transition-all"
+                className="p-3 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl text-white shadow-lg shadow-cyan-500/20
+                           disabled:opacity-50 disabled:shadow-none hover:shadow-cyan-500/40 hover:scale-105 transition-all active:scale-95"
               >
-                <PaperAirplaneIcon className="w-4 h-4" />
+                {isChatProcessing ? (
+                  <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                ) : (
+                  <PaperAirplaneIcon className="w-5 h-5" />
+                )}
               </button>
             </div>
-          </div>
+            <div className="text-[10px] text-zinc-600 text-center mt-2">
+              Ai Assistant can make mistakes. Check important info.
+            </div>
           </div>
         </div>
       </div>
     </div>
-  );
-};
+  </div>
+);
+    };
 
 export default InteractiveCanvas;

@@ -24,6 +24,7 @@
     "@tiptap/extension-text-style": "^3.14.0",
     "@tiptap/react": "^3.14.0",
     "@tiptap/starter-kit": "^3.14.0",
+    "@types/react-syntax-highlighter": "15.5.13",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
@@ -33,6 +34,10 @@
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-markdown": "10.1.0",
+    "react-syntax-highlighter": "16.1.0",
+    "react-textarea-autosize": "8.5.9",
+    "remark-gfm": "4.0.1",
     "reveal.js": "^5.2.1",
     "zustand": "^5.0.9"
   },
