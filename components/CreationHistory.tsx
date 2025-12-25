@@ -11,6 +11,8 @@ export interface Creation {
   html: string;
   originalImage?: string; // Base64 data URL
   timestamp: Date;
+  activityId?: string;
+  learnerLevel?: string;
 }
 
 interface CreationHistoryProps {
@@ -28,7 +30,7 @@ export const CreationHistory: React.FC<CreationHistoryProps> = ({ history, onSel
         <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Archive</h2>
         <div className="h-px flex-1 bg-zinc-800"></div>
       </div>
-      
+
       {/* Horizontal Scroll Container for Compact Layout */}
       <div className="flex overflow-x-auto space-x-4 pb-2 px-2 scrollbar-hide">
         {history.map((item) => {
@@ -42,19 +44,19 @@ export const CreationHistory: React.FC<CreationHistoryProps> = ({ history, onSel
               <div className="p-4 flex flex-col h-full">
                 <div className="flex items-start justify-between mb-2">
                   <div className="p-1.5 bg-zinc-800 rounded group-hover:bg-zinc-700 transition-colors border border-zinc-700/50">
-                      {isPdf ? (
-                          <DocumentIcon className="w-4 h-4 text-zinc-400" />
-                      ) : item.originalImage ? (
-                          <PhotoIcon className="w-4 h-4 text-zinc-400" />
-                      ) : (
-                          <DocumentIcon className="w-4 h-4 text-zinc-400" />
-                      )}
+                    {isPdf ? (
+                      <DocumentIcon className="w-4 h-4 text-zinc-400" />
+                    ) : item.originalImage ? (
+                      <PhotoIcon className="w-4 h-4 text-zinc-400" />
+                    ) : (
+                      <DocumentIcon className="w-4 h-4 text-zinc-400" />
+                    )}
                   </div>
                   <span className="text-[10px] font-mono text-zinc-600 group-hover:text-zinc-400">
                     {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                
+
                 <div className="mt-auto">
                   <h3 className="text-sm font-medium text-zinc-300 group-hover:text-white truncate">
                     {item.name}

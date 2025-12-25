@@ -106,13 +106,22 @@ export function getProviderInfo(provider: AIProvider): ProviderInfo {
 }
 
 export function isProviderAvailable(provider: AIProvider): boolean {
-  if (provider === 'gemini') {
-    return !!import.meta.env.VITE_GEMINI_API_KEY || !!import.meta.env.API_KEY;
+  const hasGemini = !!import.meta.env.VITE_GEMINI_API_KEY || !!import.meta.env.API_KEY;
+  const hasClaude = !!import.meta.env.VITE_OPENROUTER_API_KEY || !!import.meta.env.VITE_ANTHROPIC_API_KEY;
+
+  switch (provider) {
+    case 'gemini':
+      return hasGemini;
+    case 'claude':
+    case 'opus':
+      return hasClaude;
+    case 'dual':
+      return hasGemini && hasClaude;
+    case 'auto':
+      return hasGemini || hasClaude;
+    default:
+      return false;
   }
-  if (provider === 'claude') {
-    return !!import.meta.env.VITE_ANTHROPIC_API_KEY;
-  }
-  return false;
 }
 
 /**

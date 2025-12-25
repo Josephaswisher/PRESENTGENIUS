@@ -149,6 +149,8 @@ const App: React.FC = () => {
           html: html,
           originalImage: previewImage,
           timestamp: new Date(),
+          activityId: options.activityId,
+          learnerLevel: options.learnerLevel as any,
         };
 
         setActiveCreation(newCreation);
@@ -193,18 +195,87 @@ const App: React.FC = () => {
   const handleChatRefine = async (message: string) => {
     if (!activeCreation) return;
 
-    setChatMessages(prev => [...prev, { role: 'user', text: message }]);
+    setChatMessages(prev => [...prev, { id: `user-${Date.now()}`, role: 'user', text: message }]);
     setIsRefining(true);
 
     try {
-      const updatedHtml = await refineWithProvider(currentProvider, activeCreation.html, message);
-      const updatedCreation = { ...activeCreation, html: updatedHtml };
-      setActiveCreation(updatedCreation);
-      setHistory(prev => prev.map(item => item.id === updatedCreation.id ? updatedCreation : item));
-      setChatMessages(prev => [...prev, { role: 'assistant', text: "Done! I've updated the presentation." }]);
-    } catch (error) {
+      // Enhanced system prompt for refinement with copilot capabilities
+      const systemPrompt = `You are Dr. Swisher's Lecture Copilot. You are refining an interactive medical education presentation.
+
+CURRENT TOPIC: ${activeCreation.name}
+AUDIENCE: ${activeCreation.activityId || 'Medical Education'} (Learner Level: ${activeCreation.learnerLevel || 'Residents'})
+
+Your goal is to satisfy the user's request while maintaining medical accuracy and high-quality UI.
+
+INSTRUCTION: "${message}"
+
+CAPABILITIES:
+1. **Direct HTML Refinement**: Update the HTML code directly.
+2. **Structural Actions**: If the user wants to add/remove sections or significantly change the outline, include an action tag.
+
+AVAILABLE ACTIONS:
+- [ACTION:GENERATE_SLIDES] - Use this if the user wants to completely rebuild the presentation or add large amounts of new content from research.
+- [ACTION:RESEARCH:topic] - Trigger a research deep-dive for a specific medical topic.
+
+If you update the code, return the full new HTML.
+If you use an action, include the [ACTION:...] tag in your response.
+
+ALWAYS maintain the premium Tailwind/medical aesthetic.`;
+
+      const response = await refineWithProvider(currentProvider, activeCreation.html, `${systemPrompt}\n\nUSER INSTRUCTION: ${message}`);
+
+      let cleanHtml = response;
+      let action: string | undefined;
+
+      // Robust action parsing
+      const actionMatch = response.match(/\[ACTION:(\w+)(?::([\s\S]*?))?\]/);
+      if (actionMatch) {
+        action = actionMatch[1];
+        // Capture everything between [ACTION:... ]
+        const fullActionTag = actionMatch[0];
+        cleanHtml = response.replace(fullActionTag, '').trim();
+      }
+
+      // Final cleanup of the HTML (ensure it doesn't have markdown wrappers)
+      const htmlStart = cleanHtml.indexOf('<!DOCTYPE');
+      const htmlEnd = cleanHtml.lastIndexOf('</html>');
+      if (htmlStart !== -1 && htmlEnd !== -1) {
+        cleanHtml = cleanHtml.slice(htmlStart, htmlEnd + 7);
+      }
+
+      // If response is just an action or empty text with action, we might not have HTML
+      if (cleanHtml.startsWith('<!DOCTYPE') || cleanHtml.includes('<html')) {
+        const updatedCreation = { ...activeCreation, html: cleanHtml };
+        setActiveCreation(updatedCreation);
+        setHistory(prev => prev.map(item => item.id === updatedCreation.id ? updatedCreation : item));
+
+        setChatMessages(prev => [...prev, {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          text: "I've updated the presentation as requested. You can see the changes in the live preview."
+        }]);
+      } else if (action === 'GENERATE_SLIDES') {
+        // To rebuild, we would ideally need the canvas doc, but we can try to infer or ask the user
+        setChatMessages(prev => [...prev, {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          text: "That's a significant change! I'll need to rebuild the slide deck to accommodate that properly. Would you like me to go ahead and regenerate the outline?"
+        }]);
+      } else {
+        setChatMessages(prev => [...prev, {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          text: cleanHtml || "I've processed your request."
+        }]);
+      }
+
+    } catch (error: any) {
       console.error("Refinement failed:", error);
-      setChatMessages(prev => [...prev, { role: 'assistant', text: "Sorry, couldn't update. Please try again." }]);
+      setChatMessages(prev => [...prev, {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        text: `Sorry, I encountered an error while updating: ${error.message || 'Unknown error'}`
+      }]);
     } finally {
       setIsRefining(false);
     }
@@ -351,8 +422,8 @@ Generate an engaging, visually polished presentation.`;
               <button
                 onClick={() => setSidebarTab('research')}
                 className={`flex-1 px-3 py-2.5 text-xs font-medium transition-all ${sidebarTab === 'research'
-                    ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
-                    : 'text-zinc-500 hover:text-white'
+                  ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
+                  : 'text-zinc-500 hover:text-white'
                   }`}
               >
                 🔍 Research
@@ -360,8 +431,8 @@ Generate an engaging, visually polished presentation.`;
               <button
                 onClick={() => setSidebarTab('chat')}
                 className={`flex-1 px-3 py-2.5 text-xs font-medium transition-all ${sidebarTab === 'chat'
-                    ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
-                    : 'text-zinc-500 hover:text-white'
+                  ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
+                  : 'text-zinc-500 hover:text-white'
                   }`}
               >
                 💬 Refine
@@ -369,8 +440,8 @@ Generate an engaging, visually polished presentation.`;
               <button
                 onClick={() => setSidebarTab('questions')}
                 className={`flex-1 px-3 py-2.5 text-xs font-medium transition-all ${sidebarTab === 'questions'
-                    ? 'text-purple-400 border-b-2 border-purple-400 bg-purple-500/5'
-                    : 'text-zinc-500 hover:text-white'
+                  ? 'text-purple-400 border-b-2 border-purple-400 bg-purple-500/5'
+                  : 'text-zinc-500 hover:text-white'
                   }`}
               >
                 ❓ Board Qs
