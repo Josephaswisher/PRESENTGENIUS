@@ -16,6 +16,8 @@ import { FileInput, GenerationOptions } from './services/gemini';
 import { generateWithProvider, refineWithProvider, AIProvider, GenerationPhase } from './services/ai-provider';
 import { savePresentation, isSupabaseConfigured, savePromptHistory } from './services/supabase';
 import { backupPresentation, restoreGoogleDriveSession, isGoogleDriveConnected } from './services/google-drive';
+import { BackgroundEffects } from './components/BackgroundEffects';
+import { Header } from './components/Header';
 import { GenerationProgress } from './components/GenerationProgress';
 import { ArrowUpTrayIcon } from '@heroicons/react/24/solid';
 
@@ -375,12 +377,30 @@ Generate an engaging, visually polished presentation.`;
   const isWorkspaceActive = !!activeCreation || isGenerating;
 
   return (
-    <div className="h-[100dvh] bg-zinc-950 bg-dot-grid text-zinc-50 selection:bg-blue-500/30 overflow-hidden relative flex flex-col">
+    <div className="h-[100dvh] bg-zinc-950 text-zinc-50 selection:bg-cyan-500/30 overflow-hidden relative flex flex-col font-['Outfit']">
+      <BackgroundEffects />
+
+      {!showPresentation && (
+        <Header
+          activeCreation={activeCreation}
+          onBack={handleReset}
+          onPresent={() => setShowPresentation(true)}
+          onExport={() => {
+            if (!activeCreation) return;
+            const blob = new Blob([JSON.stringify(activeCreation)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${activeCreation.name.replace(/\s+/g, '_')}.json`;
+            a.click();
+          }}
+        />
+      )}
 
       {/* Landing / Interactive Canvas View */}
       <div
         className={`
-          absolute inset-0 z-10 flex flex-col overflow-hidden
+          absolute inset-0 z-10 flex flex-col overflow-hidden pt-16
           transition-all duration-700 cubic-bezier(0.4, 0, 0.2, 1)
           ${isWorkspaceActive
             ? 'opacity-0 scale-95 pointer-events-none translate-y-8'
@@ -396,7 +416,7 @@ Generate an engaging, visually polished presentation.`;
         />
 
         {/* History Bar at Bottom */}
-        <div className="flex-shrink-0 border-t border-zinc-800 bg-zinc-900/80 backdrop-blur-xl">
+        <div className="flex-shrink-0 border-t border-white/5 bg-zinc-900/40 backdrop-blur-xl">
           <div className="px-4 py-3">
             <CreationHistory history={history} onSelect={handleSelectCreation} />
           </div>

@@ -27,27 +27,29 @@ export const Header: React.FC<HeaderProps> = ({
   onExport,
 }) => {
   return (
-    <header className="h-14 flex items-center justify-between px-4 border-b border-zinc-800/50 bg-zinc-900/80 backdrop-blur-sm">
+    <header className="fixed top-0 left-0 right-0 h-16 flex items-center justify-between px-6 border-b border-white/5 bg-zinc-950/20 backdrop-blur-xl z-[100]">
       {/* Left: Back button + Logo */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4">
         {activeCreation && (
           <button
             onClick={onBack}
-            className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
+            className="p-2 text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all border border-white/5"
             title="Back to home"
           >
             <ArrowLeftIcon className="w-5 h-5" />
           </button>
         )}
 
-        <div className="flex items-center gap-2">
-          <span className="text-xl">🧬</span>
+        <div className="flex items-center gap-3 group cursor-pointer">
+          <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:scale-110 transition-transform">
+            <span className="text-xl">🧬</span>
+          </div>
           <div className="hidden sm:flex flex-col">
-            <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 text-sm leading-tight">
+            <span className="font-black text-white tracking-tighter text-base leading-none">
               PRESENTGENIUS
             </span>
-            <span className="text-[10px] text-zinc-500 leading-tight">
-              By Dr. Joey Swisher
+            <span className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase">
+              By Dr. Swisher
             </span>
           </div>
         </div>
@@ -56,39 +58,42 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Center: Project title */}
       {activeCreation && (
         <div className="absolute left-1/2 -translate-x-1/2">
-          <h1 className="text-sm font-medium text-zinc-300 truncate max-w-xs">
-            {activeCreation.name}
-          </h1>
+          <div className="px-4 py-1.5 bg-white/5 border border-white/10 rounded-full">
+            <h1 className="text-xs font-bold text-zinc-300 tracking-wide uppercase truncate max-w-xs">
+              {activeCreation.name}
+            </h1>
+          </div>
         </div>
       )}
 
       {/* Right: Actions + User */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         {activeCreation && (
-          <>
+          <div className="flex items-center gap-2 p-1 bg-white/5 rounded-2xl border border-white/5">
             {onPresent && (
               <button
                 onClick={onPresent}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
-                title="Present"
+                className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-cyan-500 hover:bg-cyan-400 rounded-xl transition-all shadow-lg shadow-cyan-500/20"
               >
-                <PlayIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Present</span>
+                <PlayIcon className="w-4 h-4 fill-white" />
+                <span>PRESENT</span>
               </button>
             )}
             {onExport && (
               <button
                 onClick={onExport}
-                className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
+                className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
                 title="Export"
               >
                 <ArrowDownTrayIcon className="w-5 h-5" />
               </button>
             )}
-          </>
+          </div>
         )}
 
-        <UserMenu />
+        <div className="p-1 bg-white/5 rounded-2xl border border-white/5">
+          <UserMenu />
+        </div>
       </div>
     </header>
   );

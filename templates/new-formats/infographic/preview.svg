@@ -1,0 +1,48 @@
+<svg viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="infoBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e3a5f"/>
+      <stop offset="100%" style="stop-color:#0f172a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect fill="url(#infoBg)" width="300" height="200" rx="8"/>
+
+  <!-- Title -->
+  <text x="150" y="25" fill="#22d3ee" font-size="14" text-anchor="middle" font-family="sans-serif" font-weight="bold">HYPERTENSION</text>
+  <text x="150" y="38" fill="#64748b" font-size="8" text-anchor="middle" font-family="sans-serif">Quick Reference Guide</text>
+
+  <!-- Stats Row -->
+  <g transform="translate(20, 50)">
+    <rect width="80" height="40" fill="#3b82f6" opacity="0.2" rx="6"/>
+    <text x="40" y="22" fill="#60a5fa" font-size="16" text-anchor="middle" font-family="sans-serif" font-weight="bold">47%</text>
+    <text x="40" y="34" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="sans-serif">Adults Affected</text>
+  </g>
+  <g transform="translate(110, 50)">
+    <rect width="80" height="40" fill="#ef4444" opacity="0.2" rx="6"/>
+    <text x="40" y="22" fill="#f87171" font-size="16" text-anchor="middle" font-family="sans-serif" font-weight="bold">#1</text>
+    <text x="40" y="34" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="sans-serif">CVD Risk Factor</text>
+  </g>
+  <g transform="translate(200, 50)">
+    <rect width="80" height="40" fill="#22c55e" opacity="0.2" rx="6"/>
+    <text x="40" y="22" fill="#4ade80" font-size="16" text-anchor="middle" font-family="sans-serif" font-weight="bold">130/80</text>
+    <text x="40" y="34" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="sans-serif">Target BP</text>
+  </g>
+
+  <!-- Content sections -->
+  <rect x="20" y="100" width="125" height="45" fill="#334155" rx="4"/>
+  <text x="30" y="115" fill="#fbbf24" font-size="8" font-family="sans-serif">⚠️ Risk Factors</text>
+  <text x="30" y="128" fill="#94a3b8" font-size="7" font-family="sans-serif">• Obesity • Diabetes</text>
+  <text x="30" y="138" fill="#94a3b8" font-size="7" font-family="sans-serif">• Family History</text>
+
+  <rect x="155" y="100" width="125" height="45" fill="#334155" rx="4"/>
+  <text x="165" y="115" fill="#22d3ee" font-size="8" font-family="sans-serif">💊 First-Line Tx</text>
+  <text x="165" y="128" fill="#94a3b8" font-size="7" font-family="sans-serif">• ACEi/ARB • CCB</text>
+  <text x="165" y="138" fill="#94a3b8" font-size="7" font-family="sans-serif">• Thiazide diuretic</text>
+
+  <!-- Bottom pearl -->
+  <rect x="20" y="155" width="260" height="35" fill="#059669" opacity="0.2" rx="6"/>
+  <text x="35" y="173" fill="#34d399" font-size="8" font-family="sans-serif">💡 Clinical Pearl: ASCVD risk guides treatment intensity</text>
+  <text x="35" y="183" fill="#6ee7b7" font-size="7" font-family="sans-serif">Lifestyle mods first, add meds if BP still elevated</text>
+</svg>

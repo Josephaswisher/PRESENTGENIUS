@@ -25,6 +25,7 @@
     "@tiptap/react": "^3.14.0",
     "@tiptap/starter-kit": "^3.14.0",
     "@types/react-syntax-highlighter": "15.5.13",
+    "@types/uuid": "11.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
@@ -40,6 +41,7 @@
     "react-textarea-autosize": "8.5.9",
     "remark-gfm": "4.0.1",
     "reveal.js": "^5.2.1",
+    "uuid": "13.0.0",
     "zustand": "^5.0.9"
   },
   "devDependencies": {

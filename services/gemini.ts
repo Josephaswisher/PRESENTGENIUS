@@ -7,9 +7,10 @@
  */
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Activity, LearnerLevel, getActivityById, getLearnerLevelById } from '../data/activities';
+import { getModelId } from '../config/models';
 
-// Gemini 3 Flash - fast, cost-effective, excellent for agentic workflows and UI generation
-const GEMINI_MODEL = 'gemini-3-flash-preview';
+// Use centralized model configuration
+const GEMINI_MODEL = getModelId('gemini');
 
 const getApiKey = () => {
   const key = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.API_KEY;

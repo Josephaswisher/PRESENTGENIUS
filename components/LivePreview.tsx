@@ -6,7 +6,7 @@
  * Includes multi-format export dropdown (HTML, PDF, JSON)
  */
 import React, { useEffect, useState, useRef } from 'react';
-import { ArrowDownTrayIcon, PlusIcon, ViewColumnsIcon, DocumentIcon, CodeBracketIcon, XMarkIcon, ChevronDownIcon, ClipboardDocumentIcon, PresentationChartBarIcon, PencilSquareIcon, DocumentDuplicateIcon, ChartBarIcon, SparklesIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, PlusIcon, ViewColumnsIcon, DocumentIcon, CodeBracketIcon, XMarkIcon, ChevronDownIcon, ClipboardDocumentIcon, PresentationChartBarIcon, PencilSquareIcon, DocumentDuplicateIcon, ChartBarIcon, SparklesIcon, DocumentTextIcon, RectangleStackIcon } from '@heroicons/react/24/outline';
 import { Creation } from './CreationHistory';
 import { exportToHTML, exportToPDF, exportToJSON, copyToClipboard } from '../services/export';
 import { PresentationMode } from './PresentationMode';
@@ -14,6 +14,7 @@ import { VisualEditor } from './editor/VisualEditor';
 import { CompanionMaterialsPanel } from './materials/CompanionMaterialsPanel';
 import { PollingPanel } from './polling/PollingPanel';
 import { AIEnhancementPanel } from './ai/AIEnhancementPanel';
+import { SlideEditor } from './SlideEditor';
 
 interface LivePreviewProps {
   creation: Creation | null;
@@ -131,6 +132,7 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
     const [showMaterialsPanel, setShowMaterialsPanel] = useState(false);
     const [showPollingPanel, setShowPollingPanel] = useState(false);
     const [showAIPanel, setShowAIPanel] = useState(false);
+    const [showSlideEditor, setShowSlideEditor] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
 
     // Handle loading animation steps
@@ -262,6 +264,16 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
                     >
                         <PencilSquareIcon className="w-4 h-4" />
                         <span className="text-xs hidden md:inline">Edit</span>
+                    </button>
+
+                    {/* Slide Editor Button */}
+                    <button
+                        onClick={() => setShowSlideEditor(true)}
+                        title="Slide-by-Slide Editor"
+                        className={`flex items-center space-x-1 p-1.5 rounded-md transition-all ${showSlideEditor ? 'bg-cyan-600 text-white' : 'text-zinc-500 hover:text-cyan-400 hover:bg-zinc-800'}`}
+                    >
+                        <RectangleStackIcon className="w-4 h-4" />
+                        <span className="text-xs hidden md:inline">Slides</span>
                     </button>
 
                     {/* AI Enhance Button */}
@@ -517,6 +529,41 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
             showFeedback('Content enhanced!');
           }}
         />
+      )}
+
+      {/* Slide-by-Slide Editor */}
+      {showSlideEditor && creation?.html && (
+        <div className="absolute inset-0 z-50 bg-zinc-950">
+          <div className="h-full flex flex-col">
+            {/* Slide Editor Header */}
+            <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <RectangleStackIcon className="w-5 h-5 text-cyan-400" />
+                <span className="font-medium text-white">Slide Editor</span>
+                <span className="text-xs text-zinc-500">- {creation.name}</span>
+              </div>
+              <button
+                onClick={() => setShowSlideEditor(false)}
+                className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Slide Editor Content */}
+            <div className="flex-1 overflow-hidden">
+              <SlideEditor
+                html={creation.html}
+                title={creation.name}
+                topic={creation.name}
+                onHtmlChange={(updatedHtml) => {
+                  onUpdateHtml?.(updatedHtml);
+                }}
+                className="h-full"
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

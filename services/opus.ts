@@ -3,10 +3,11 @@
  * Uses OpenRouter as proxy to avoid CORS issues
  */
 import { LearnerLevel, getActivityById, getLearnerLevelById } from '../data/activities';
+import { getModelId } from '../config/models';
 
 // Use OpenRouter for Claude to avoid CORS issues
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const OPUS_MODEL = 'anthropic/claude-opus-4.5'; // Claude Opus 4.5 via OpenRouter
+const OPUS_MODEL = getModelId('opus');
 
 const getApiKey = () => {
   // Prefer OpenRouter (no CORS issues), fallback to Anthropic

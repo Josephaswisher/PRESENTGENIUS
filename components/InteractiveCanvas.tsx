@@ -42,6 +42,7 @@ import {
 import { useCollaborationStore } from '../stores/collaboration.store';
 import { ChatMessage } from './ChatMessage';
 import TextareaAutosize from 'react-textarea-autosize';
+import { Hero } from './Hero';
 
 // Types
 type ResearchSource = 'uptodate' | 'mksap' | 'perplexity' | 'pubmed';
@@ -1310,37 +1311,14 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
             <ChevronDoubleLeftIcon className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400" />
           )}
         </button>
-
         {/* Center Panel - Sections Editor */}
-        <div className="flex-1 overflow-y-auto p-4 min-w-0" onDragOver={(e) => e.preventDefault()}>
+        <div className="flex-1 overflow-y-auto min-w-0 relative" onDragOver={(e) => e.preventDefault()}>
           {doc.sections.length === 0 ? (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center max-w-md">
-                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center">
-                  <LightBulbIcon className="w-8 h-8 text-cyan-400" />
-                </div>
-                <h2 className="text-xl font-bold text-white mb-2">Build Your Lecture</h2>
-                <p className="text-zinc-400 text-sm mb-4">
-                  Enter a topic on the left, or chat with the assistant on the right to get started.
-                </p>
-                <div className="grid grid-cols-2 gap-2 text-left text-xs">
-                  <div className="p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
-                    <div className="text-orange-400 font-medium">📚 UpToDate</div>
-                  </div>
-                  <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                    <div className="text-blue-400 font-medium">🩺 MKSAP 19</div>
-                  </div>
-                  <div className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
-                    <div className="text-purple-400 font-medium">🔮 Perplexity</div>
-                  </div>
-                  <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
-                    <div className="text-green-400 font-medium">📄 PubMed</div>
-                  </div>
-                </div>
-              </div>
+            <div className="h-full">
+              <Hero />
             </div>
           ) : (
-            <div className="space-y-3 max-w-3xl mx-auto pb-10">
+            <div className="space-y-3 max-w-4xl mx-auto pb-10 px-4 pt-4">
               {doc.sections.map((section, index) => (
                 <div
                   key={section.id}
