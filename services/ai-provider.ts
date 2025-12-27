@@ -1,18 +1,22 @@
 /**
  * Unified AI Provider Service
- * Abstracts between Gemini and Claude for consistent API
- * Features: Auto-select, Retry, Caching, Progress callbacks
+ * Abstracts between Gemini, Claude, and OpenRouter for consistent API
+ * Features: Auto-select, Retry, Caching, Progress callbacks, Multi-model support
  */
 import * as gemini from './gemini';
 import * as claude from './claude';
 import * as opus from './opus';
+import * as openrouter from './openrouter';
 import { withRetry } from '../lib/retry';
 import { getCachedResponse, setCachedResponse } from './cache';
 import { getAdaptivePromptContext } from './knowledge';
 
-export type AIProvider = 'gemini' | 'claude' | 'opus' | 'dual' | 'auto';
+export type AIProvider = 'gemini' | 'claude' | 'opus' | 'openrouter' | 'dual' | 'auto';
 
-export type GenerationPhase = 'starting' | 'gemini' | 'opus' | 'claude' | 'enhancing' | 'caching' | 'complete';
+// Re-export OpenRouter models for UI
+export { OPENROUTER_MODELS, type OpenRouterModelId } from './openrouter';
+
+export type GenerationPhase = 'starting' | 'gemini' | 'opus' | 'claude' | 'openrouter' | 'enhancing' | 'caching' | 'complete';
 
 export interface ProgressCallback {
   (phase: GenerationPhase, progress: number, message?: string): void;
@@ -66,6 +70,13 @@ export const PROVIDERS: ProviderInfo[] = [
     color: 'from-purple-500 to-pink-500',
   },
   {
+    id: 'openrouter',
+    name: 'OpenRouter (Multi-Model)',
+    model: 'openrouter',
+    icon: '🌐',
+    color: 'from-indigo-500 to-violet-500',
+  },
+  {
     id: 'dual',
     name: 'Dual AI (Gemini 3 + Opus)',
     model: 'dual-gemini-opus',
@@ -107,18 +118,21 @@ export function getProviderInfo(provider: AIProvider): ProviderInfo {
 
 export function isProviderAvailable(provider: AIProvider): boolean {
   const hasGemini = !!import.meta.env.VITE_GEMINI_API_KEY || !!import.meta.env.API_KEY;
-  const hasClaude = !!import.meta.env.VITE_OPENROUTER_API_KEY || !!import.meta.env.VITE_ANTHROPIC_API_KEY;
+  const hasClaude = !!import.meta.env.VITE_ANTHROPIC_API_KEY;
+  const hasOpenRouter = !!import.meta.env.VITE_OPENROUTER_API_KEY;
 
   switch (provider) {
     case 'gemini':
       return hasGemini;
     case 'claude':
     case 'opus':
-      return hasClaude;
+      return hasClaude || hasOpenRouter; // Can use OpenRouter for Claude models
+    case 'openrouter':
+      return hasOpenRouter;
     case 'dual':
-      return hasGemini && hasClaude;
+      return hasGemini && (hasClaude || hasOpenRouter);
     case 'auto':
-      return hasGemini || hasClaude;
+      return hasGemini || hasClaude || hasOpenRouter;
     default:
       return false;
   }
@@ -240,6 +254,18 @@ export async function generateWithProvider(
         { maxRetries: 3 }
       );
       break;
+    case 'openrouter':
+      onProgress?.('openrouter', 10, 'OpenRouter generating...');
+      result = await withRetry(
+        () => openrouter.bringToLife(enhancedPrompt, files, opts),
+        {
+          maxRetries: 3, onRetry: (err, attempt) => {
+            console.log(`[OpenRouter] Retry ${attempt}:`, err.message);
+            onProgress?.('openrouter', 10 + attempt * 5, `Retrying... (${attempt})`);
+          }
+        }
+      );
+      break;
     case 'gemini':
     default:
       onProgress?.('gemini', 10, 'Gemini generating...');
@@ -273,6 +299,8 @@ export async function refineWithProvider(
       return opus.refineArtifact(currentHtml, instruction);
     case 'claude':
       return claude.refineArtifact(currentHtml, instruction);
+    case 'openrouter':
+      return openrouter.refineArtifact(currentHtml, instruction);
     case 'gemini':
     default:
       return gemini.refineArtifact(currentHtml, instruction);

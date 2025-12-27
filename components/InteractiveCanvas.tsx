@@ -21,7 +21,6 @@ import {
   MagnifyingGlassIcon,
   Cog6ToothIcon,
   PaperAirplaneIcon,
-  ChatBubbleLeftRightIcon,
   CursorArrowRaysIcon,
   ArrowsUpDownIcon,
   CubeIcon,
@@ -40,9 +39,17 @@ import {
   type ScraperStatus,
 } from '../services/medical-scrapers';
 import { useCollaborationStore } from '../stores/collaboration.store';
-import { ChatMessage } from './ChatMessage';
+import {
+  ChatMessage,
+  TypingIndicator,
+  ConversationStarters,
+  ContextPill,
+  AssistantStatus,
+  KeyboardHint,
+} from './ChatMessage';
 import TextareaAutosize from 'react-textarea-autosize';
 import { Hero } from './Hero';
+import { MicrophoneIcon } from '@heroicons/react/24/solid';
 
 // Types
 type ResearchSource = 'uptodate' | 'mksap' | 'perplexity' | 'pubmed';
@@ -160,6 +167,7 @@ const AI_PROVIDERS: { id: AIProvider; name: string; icon: string }[] = [
   { id: 'gemini', name: 'Gemini 3 Flash', icon: '⚡' },
   { id: 'opus', name: 'Claude Opus', icon: '👑' },
   { id: 'claude', name: 'Claude Sonnet', icon: '🎭' },
+  { id: 'openrouter', name: 'OpenRouter', icon: '🌐' },
 ];
 
 const QUICK_ACTIONS = [
@@ -182,7 +190,7 @@ export const InteractiveCanvas: React.FC<Props> = ({
   });
 
   // Collaboration Store
-  const { isConnected, activeUsers, cursors, connect, disconnect, updateCursor } = useCollaborationStore();
+  const { isConnected, isConnecting, connectionError, activeUsers, cursors, connect, disconnect, updateCursor } = useCollaborationStore();
   const [showCollaborators, setShowCollaborators] = useState(false);
 
   // Auto-connect on mount (mock user for demo)
@@ -219,16 +227,63 @@ export const InteractiveCanvas: React.FC<Props> = ({
   const [showSettings, setShowSettings] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Panel collapse states
+  // Panel collapse states and resizable widths
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(288); // 18rem = 288px
+  const [rightPanelWidth, setRightPanelWidth] = useState(384); // 24rem = 384px
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+
+  // Resize handlers
+  const handleLeftResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingLeft(true);
+  };
+
+  const handleRightResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingRight(true);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingLeft) {
+        const newWidth = Math.min(Math.max(e.clientX, 200), 500);
+        setLeftPanelWidth(newWidth);
+      }
+      if (isResizingRight) {
+        const newWidth = Math.min(Math.max(window.innerWidth - e.clientX, 280), 600);
+        setRightPanelWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingLeft(false);
+      setIsResizingRight(false);
+    };
+
+    if (isResizingLeft || isResizingRight) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingLeft, isResizingRight]);
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
       role: 'assistant',
-      content: "Hi Dr. Swisher! I'm your lecture building assistant. Tell me what topic you'd like to teach, or ask me to help refine your outline. I can research topics, suggest sections, add clinical cases, or help structure your content.",
+      content: "Hi Dr. Swisher! I'm your lecture building assistant. Just tell me what you want to teach and I'll help you build it.\n\n**Try saying:**\n- \"Help me build a presentation on heart failure\"\n- \"Create a lecture on diabetic ketoacidosis for residents\"\n- \"I need a 45-minute talk on acute coronary syndrome\"\n\nI'll ask a few questions, research the topic, create an outline, and generate your slides!",
       timestamp: new Date(),
     }
   ]);
@@ -433,34 +488,44 @@ export const InteractiveCanvas: React.FC<Props> = ({
         contextParts.push(`Research available from: ${globalResearch.map(r => r.source).join(', ')}`);
       }
 
-      const systemPrompt = `You are Dr. Swisher's lecture building assistant for PRESENTGENIUS. You help create medical education presentations.
+      const systemPrompt = `You are Dr. Swisher's lecture building assistant for PRESENTGENIUS. You help create medical education presentations through natural conversation.
 
 CURRENT STATE:
 ${contextParts.length > 0 ? contextParts.join('\n\n') : 'No lecture started yet.'}
 Target Audience: ${doc.targetAudience}
 Duration: ${doc.duration} minutes
 
-You can help by:
-1. Suggesting lecture topics and structures
-2. Recommending sections to add or modify
-3. Providing clinical pearls and teaching points
-4. Suggesting board-style questions
-5. Helping refine content and flow
+YOUR ROLE: Be a proactive co-creator. When the user wants to build a presentation:
+1. If they mention a topic, immediately set it AND ask 1-2 clarifying questions (audience? specific angle? duration?)
+2. Once you have enough info, offer to generate an outline or research the topic
+3. Guide them through building the full presentation step by step
+4. Be conversational and encouraging, like a helpful colleague
 
-AVAILABLE ACTIONS (use these to control the lecture builder):
-- [ACTION:SET_TOPIC:topic name here] - Set the lecture topic
-- [ACTION:ADD_SECTION:{"title":"...","type":"intro|concept|case|mechanism|clinical|summary","keyPoints":["..."]}] - Add a new section
-- [ACTION:REMOVE_SECTION:section title or index] - Remove a section
-- [ACTION:MODIFY_SECTION:{"index":0,"title":"...","type":"...","keyPoints":["..."]}] - Modify existing section
-- [ACTION:EXPAND_SECTION:section title or index] - Expand a section with AI content
-- [ACTION:SET_AUDIENCE:students|residents|fellows|attendings] - Change target audience
-- [ACTION:SET_DURATION:number] - Set lecture duration in minutes
-- [ACTION:RESEARCH] - Research the current topic
-- [ACTION:GENERATE_OUTLINE] - Generate an AI-powered outline
-- [ACTION:GENERATE_SLIDES] - Generate the final presentation slides
+CONVERSATION FLOW for "help me build a presentation on X":
+1. Acknowledge the topic and set it with [ACTION:SET_TOPIC:X]
+2. Ask: "Great topic! Who's your audience - medical students, residents, fellows, or attendings? And how long should this be?"
+3. When they answer, use [ACTION:SET_AUDIENCE:...] and [ACTION:SET_DURATION:...]
+4. Then say "Let me research this and create an outline for you" and use [ACTION:RESEARCH] then [ACTION:GENERATE_OUTLINE]
+5. After outline is ready, offer to expand sections or generate the final slides
 
-IMPORTANT: When the user asks you to do something, ALWAYS include the appropriate action tag. Be proactive - if the user says "let's start with hypertension", use [ACTION:SET_TOPIC:Hypertension].
-Be concise, practical, and focused on high-yield medical education.`;
+AVAILABLE ACTIONS:
+- [ACTION:SET_TOPIC:topic] - Set the lecture topic
+- [ACTION:ADD_SECTION:{"title":"...","type":"intro|concept|case|mechanism|clinical|summary","keyPoints":["..."]}] - Add section
+- [ACTION:REMOVE_SECTION:title or index] - Remove section
+- [ACTION:MODIFY_SECTION:{"index":0,"title":"...","type":"...","keyPoints":["..."]}] - Modify section
+- [ACTION:EXPAND_SECTION:title or index] - Expand with AI content
+- [ACTION:SET_AUDIENCE:students|residents|fellows|attendings] - Set audience
+- [ACTION:SET_DURATION:number] - Set duration in minutes
+- [ACTION:RESEARCH] - Research the topic
+- [ACTION:GENERATE_OUTLINE] - Generate AI outline
+- [ACTION:GENERATE_SLIDES] - Generate final presentation
+- [ACTION:FULL_BUILD] - Run full workflow: research → outline → expand all → generate slides
+
+CRITICAL: ALWAYS include action tags when the user wants you to do something. Be proactive!
+If user says "build me a presentation on heart failure", respond with [ACTION:SET_TOPIC:Heart Failure] and ask about audience.
+If user says "just build it" or "go ahead", use [ACTION:FULL_BUILD] to run the complete workflow.
+
+Be concise, warm, and focused on high-yield medical education.`;
 
       const response = await generateWithProvider(currentProvider, `${systemPrompt}\n\nUSER: ${userMessage}`, [], {});
 
@@ -588,6 +653,54 @@ Be concise, practical, and focused on high-yield medical education.`;
             break;
           case 'GENERATE_SLIDES':
             onGenerateSlides(doc);
+            break;
+          case 'FULL_BUILD':
+            // Run the complete workflow: research → outline → expand → generate
+            (async () => {
+              setChatMessages(prev => [...prev, {
+                id: `system-${Date.now()}`,
+                role: 'assistant',
+                content: '🚀 Starting full build workflow...\n\n**Step 1/4:** Researching your topic...',
+                timestamp: new Date(),
+              }]);
+              await researchTopic();
+
+              setChatMessages(prev => [...prev, {
+                id: `system-${Date.now()}`,
+                role: 'assistant',
+                content: '✅ Research complete!\n\n**Step 2/4:** Generating outline...',
+                timestamp: new Date(),
+              }]);
+              await generateOutline();
+
+              // Wait for sections to be populated
+              await new Promise(resolve => setTimeout(resolve, 500));
+
+              setChatMessages(prev => [...prev, {
+                id: `system-${Date.now()}`,
+                role: 'assistant',
+                content: '✅ Outline ready!\n\n**Step 3/4:** Expanding sections with content...',
+                timestamp: new Date(),
+              }]);
+
+              // Expand all sections sequentially
+              const currentSections = doc.sections;
+              for (const section of currentSections) {
+                if (!section.content) {
+                  await expandSection(section.id);
+                }
+              }
+
+              setChatMessages(prev => [...prev, {
+                id: `system-${Date.now()}`,
+                role: 'assistant',
+                content: '✅ Content generated!\n\n**Step 4/4:** Building your presentation slides...',
+                timestamp: new Date(),
+              }]);
+
+              // Generate the final slides
+              onGenerateSlides(doc);
+            })();
             break;
         }
 
@@ -969,18 +1082,32 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
             </div>
 
             {/* Collaborators Toggle */}
-            <button
-              onClick={() => setShowCollaborators(!showCollaborators)}
-              className={`p-2 rounded-lg hover:bg-zinc-800 transition-all ${showCollaborators ? 'text-purple-400' : 'text-zinc-400'} relative`}
-              title="Toggle Collaborators"
-            >
-              <CursorArrowRaysIcon className="w-5 h-5" />
-              {activeUsers.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
-                  {activeUsers.length}
-                </span>
+            <div className="relative">
+              <button
+                onClick={() => setShowCollaborators(!showCollaborators)}
+                className={`p-2 rounded-lg hover:bg-zinc-800 transition-all ${
+                  connectionError ? 'text-red-400' :
+                  isConnecting ? 'text-yellow-400' :
+                  isConnected ? 'text-green-400' :
+                  showCollaborators ? 'text-purple-400' : 'text-zinc-400'
+                } relative`}
+                title={connectionError || (isConnecting ? 'Connecting...' : isConnected ? 'Connected' : 'Toggle Collaborators')}
+              >
+                <CursorArrowRaysIcon className={`w-5 h-5 ${isConnecting ? 'animate-pulse' : ''}`} />
+                {activeUsers.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                    {activeUsers.length}
+                  </span>
+                )}
+              </button>
+              {/* Connection status tooltip */}
+              {showCollaborators && connectionError && (
+                <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-red-900/90 border border-red-700 rounded-lg text-xs text-red-200 shadow-xl z-50">
+                  <div className="font-medium mb-1">Connection unavailable</div>
+                  <div className="text-red-300/80">{connectionError}</div>
+                </div>
               )}
-            </button>
+            </div>
 
             {/* AI Suggestions Toggle */}
             <button
@@ -1156,9 +1283,25 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
           </div>
         )}
 
-        {/* Left Panel - Setup & Research */}
-        <div className={`${leftPanelCollapsed ? 'w-0 overflow-hidden' : 'w-72'} transition-all duration-300 flex-shrink-0 relative`}>
-          <div className={`h-full w-72 border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${leftPanelCollapsed ? 'invisible' : 'visible'}`}>
+        {/* Left Panel - Setup & Research (Resizable) */}
+        <div
+          className={`${leftPanelCollapsed ? 'w-0 overflow-hidden' : ''} transition-all duration-300 flex-shrink-0 relative`}
+          style={{ width: leftPanelCollapsed ? 0 : leftPanelWidth }}
+        >
+          <div
+            className={`h-full border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${leftPanelCollapsed ? 'invisible' : 'visible'}`}
+            style={{ width: leftPanelWidth }}
+          >
+            {/* Resize Handle */}
+            <div
+              onMouseDown={handleLeftResizeStart}
+              className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-10 group
+                         hover:bg-cyan-500/50 transition-colors ${isResizingLeft ? 'bg-cyan-500' : 'bg-transparent'}`}
+            >
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-8 -mr-1.5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="w-1 h-6 bg-cyan-500/50 rounded-full" />
+              </div>
+            </div>
             <div className="p-4 space-y-4 overflow-y-auto flex-1">
               {/* Topic */}
               <div>
@@ -1488,62 +1631,151 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
           )}
         </button>
 
-        {/* Right Panel - Chat Assistant */}
-        <div className={`${rightPanelCollapsed ? 'w-0 overflow-hidden' : 'w-80'} transition-all duration-300 flex-shrink-0`}>
-          <div className={`h-full w-80 border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${rightPanelCollapsed ? 'invisible' : 'visible'}`}>
-            {/* Chat Header */}
-            <div className="flex-shrink-0 p-3 border-b border-zinc-800">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg">
-                  <ChatBubbleLeftRightIcon className="w-4 h-4 text-purple-400" />
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-white">Lecture Assistant</div>
-                  <div className="text-xs text-zinc-500">Ask me anything</div>
-                </div>
+        {/* Right Panel - Enhanced Chat Assistant (Resizable) */}
+        <div
+          className={`${rightPanelCollapsed ? 'w-0 overflow-hidden' : ''} transition-all duration-300 flex-shrink-0 relative`}
+          style={{ width: rightPanelCollapsed ? 0 : rightPanelWidth }}
+        >
+          <div
+            className={`h-full border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${rightPanelCollapsed ? 'invisible' : 'visible'}`}
+            style={{ width: rightPanelWidth }}
+          >
+            {/* Resize Handle */}
+            <div
+              onMouseDown={handleRightResizeStart}
+              className={`absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 group
+                         hover:bg-purple-500/50 transition-colors ${isResizingRight ? 'bg-purple-500' : 'bg-transparent'}`}
+            >
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-8 -ml-1.5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="w-1 h-6 bg-purple-500/50 rounded-full" />
               </div>
             </div>
 
-            {/* Chat Messages */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
-              {chatMessages.map((msg) => (
+            {/* Enhanced Chat Header with Status Indicator */}
+            <div className="flex-shrink-0 p-3 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm">
+              <div className="flex items-center justify-between">
+                <AssistantStatus
+                  status={isChatProcessing ? 'thinking' : isResearching ? 'researching' : isGeneratingOutline ? 'generating' : 'ready'}
+                  mood={doc.sections.length > 3 ? 'happy' : 'neutral'}
+                />
+                {/* Context Pill - shows current progress */}
+                <ContextPill
+                  topic={doc.topic}
+                  sectionsCount={doc.sections.length}
+                  progress={getProgress()}
+                  isResearching={isResearching}
+                  isGenerating={isGeneratingOutline}
+                />
+              </div>
+            </div>
+
+            {/* Chat Messages Area */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Show conversation starters when no user messages yet */}
+              {chatMessages.length <= 1 && (
+                <ConversationStarters
+                  suggestions={[
+                    { icon: '❤️', label: 'Build a presentation on heart failure', prompt: 'Help me build a presentation on heart failure' },
+                    { icon: '🧠', label: 'Create a lecture on stroke management', prompt: 'Create a lecture on acute stroke management for residents' },
+                    { icon: '💉', label: 'Teach me about diabetic ketoacidosis', prompt: 'I need a 30-minute talk on DKA for medical students' },
+                    { icon: '🫁', label: 'Explain COPD exacerbation', prompt: 'Help me teach COPD exacerbation management' },
+                  ]}
+                  onSelect={handleChatSubmit}
+                  disabled={isChatProcessing}
+                />
+              )}
+
+              {/* Messages with enhanced features */}
+              {chatMessages.map((msg, idx) => (
                 <ChatMessage
                   key={msg.id}
                   content={msg.content}
                   role={msg.role}
                   action={msg.action}
+                  timestamp={msg.timestamp}
+                  showTimestamp={true}
+                  isLatest={idx === chatMessages.length - 1 && msg.role === 'assistant'}
+                  onReaction={(reaction) => {
+                    console.log(`Message ${msg.id} rated: ${reaction}`);
+                    // Could save to analytics here
+                  }}
                 />
               ))}
+
+              {/* Enhanced Typing Indicator */}
               {isChatProcessing && (
-                <div className="flex justify-start">
-                  <div className="bg-zinc-800 text-zinc-400 p-2.5 rounded-xl text-sm flex items-center gap-2">
-                    <ArrowPathIcon className="w-3 h-3 animate-spin" />
-                    Thinking...
-                  </div>
-                </div>
+                <TypingIndicator assistantName="Lecture Assistant" />
               )}
+
               <div ref={chatEndRef} />
             </div>
 
-            {/* Quick Actions */}
-            <div className="flex-shrink-0 px-3 py-2 border-t border-zinc-800">
+            {/* Enhanced Quick Actions - Categorized */}
+            <div className="flex-shrink-0 px-3 py-2 border-t border-zinc-800 bg-zinc-900/60">
+              <div className="flex items-center gap-2 mb-2">
+                <SparklesIcon className="w-3 h-3 text-purple-400" />
+                <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Quick Actions</span>
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {QUICK_ACTIONS.map((action, i) => (
                   <button
                     key={i}
                     onClick={() => handleChatSubmit(action.prompt)}
                     disabled={isChatProcessing}
-                    className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-xs text-zinc-400 hover:text-white transition-all"
+                    className="group px-2.5 py-1.5 bg-zinc-800/80 hover:bg-purple-500/20 rounded-lg text-xs text-zinc-400
+                             hover:text-purple-300 transition-all border border-transparent hover:border-purple-500/30
+                             disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                   >
+                    <span className="opacity-60 group-hover:opacity-100 transition-opacity">
+                      {i === 0 ? '💡' : i === 1 ? '📋' : i === 2 ? '📈' : '❓'}
+                    </span>
                     {action.label}
                   </button>
                 ))}
+                {/* Full Build button */}
+                <button
+                  onClick={() => handleChatSubmit('Build the complete presentation now')}
+                  disabled={isChatProcessing || !doc.topic}
+                  className="px-2.5 py-1.5 bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30
+                           rounded-lg text-xs text-purple-300 transition-all border border-purple-500/30
+                           disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  <span>🚀</span>
+                  Full Build
+                </button>
               </div>
             </div>
 
-            {/* Chat Input */}
-            <div className="flex-shrink-0 p-4 border-t border-zinc-800 bg-zinc-900/80 backdrop-blur-sm">
+            {/* Enhanced Chat Input with Voice */}
+            <div className="flex-shrink-0 p-4 border-t border-zinc-800 bg-zinc-900/80 backdrop-blur-sm space-y-3">
               <div className="flex gap-2 items-end">
+                {/* Voice Input Button */}
+                <button
+                  onClick={() => {
+                    // Voice input - would integrate with Web Speech API
+                    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                      const recognition = new SpeechRecognition();
+                      recognition.continuous = false;
+                      recognition.interimResults = false;
+                      recognition.lang = 'en-US';
+                      recognition.onresult = (event: any) => {
+                        const transcript = event.results[0][0].transcript;
+                        setChatInput(prev => prev + transcript);
+                      };
+                      recognition.start();
+                    } else {
+                      alert('Voice input not supported in this browser');
+                    }
+                  }}
+                  className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 hover:text-white
+                           transition-all border border-zinc-700 hover:border-purple-500/30"
+                  title="Voice input (click to speak)"
+                >
+                  <MicrophoneIcon className="w-5 h-5" />
+                </button>
+
+                {/* Text Input */}
                 <div className="flex-1 bg-zinc-800 rounded-xl border border-zinc-700 focus-within:border-cyan-500/50 focus-within:ring-2 focus-within:ring-cyan-500/20 transition-all">
                   <TextareaAutosize
                     minRows={1}
@@ -1556,11 +1788,13 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                         handleChatSubmit();
                       }
                     }}
-                    placeholder="Ask Dr. Swisher..."
+                    placeholder="Describe your presentation idea..."
                     disabled={isChatProcessing}
                     className="w-full px-4 py-3 bg-transparent text-white text-sm placeholder:text-zinc-500 focus:outline-none resize-none"
                   />
                 </div>
+
+                {/* Send Button */}
                 <button
                   onClick={() => handleChatSubmit()}
                   disabled={!chatInput.trim() || isChatProcessing}
@@ -1574,9 +1808,9 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                   )}
                 </button>
               </div>
-              <div className="text-[10px] text-zinc-600 text-center mt-2">
-                Ai Assistant can make mistakes. Check important info.
-              </div>
+
+              {/* Keyboard Shortcuts Hint */}
+              <KeyboardHint show={!isChatProcessing} />
             </div>
           </div>
         </div>
