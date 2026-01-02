@@ -71,7 +71,7 @@ function getApiKey(): string {
  */
 export async function generateWithOpenRouter(
   prompt: string,
-  modelId: OpenRouterModelId = 'anthropic/claude-sonnet-4-20250514',
+  modelId: OpenRouterModelId = 'deepseek/deepseek-r1',
   files: FileInput[] = [],
   options: GenerationOptions = {}
 ): Promise<string> {
@@ -147,7 +147,7 @@ ${options.activityId ? `Activity type: ${options.activityId}` : ''}`;
 export async function refineWithOpenRouter(
   currentHtml: string,
   instruction: string,
-  modelId: OpenRouterModelId = 'anthropic/claude-sonnet-4-20250514'
+  modelId: OpenRouterModelId = 'deepseek/deepseek-r1'
 ): Promise<string> {
   const apiKey = getApiKey();
 
@@ -204,7 +204,7 @@ export async function bringToLife(
   files: FileInput[] = [],
   options: GenerationOptions & { model?: OpenRouterModelId } = {}
 ): Promise<string> {
-  const model = options.model || 'anthropic/claude-sonnet-4-20250514';
+  const model = options.model || 'deepseek/deepseek-r1';
   return generateWithOpenRouter(prompt, model, files, options);
 }
 
@@ -214,7 +214,7 @@ export async function bringToLife(
 export async function refineArtifact(
   currentHtml: string,
   instruction: string,
-  model: OpenRouterModelId = 'anthropic/claude-sonnet-4-20250514'
+  model: OpenRouterModelId = 'deepseek/deepseek-r1'
 ): Promise<string> {
   return refineWithOpenRouter(currentHtml, instruction, model);
 }
