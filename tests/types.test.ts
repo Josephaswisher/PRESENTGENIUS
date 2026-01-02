@@ -57,7 +57,7 @@ describe('TypeScript Types Consistency', () => {
     const provider: ProviderInfo = {
       id: 'openrouter',
       name: 'OpenRouter (Multi-Model)',
-      model: 'deepseek/deepseek-v3.2',
+      model: 'deepseek/deepseek-chat',
       icon: '🌐',
       color: 'from-indigo-500 to-violet-500',
     };
@@ -85,7 +85,7 @@ describe('TypeScript Types Consistency', () => {
       name: 'Medical Case Study',
       html: '<!DOCTYPE html><html><body></body></html>',
       prompt: 'Create a cardiology case',
-      provider: 'deepseek/deepseek-v3.2',
+      provider: 'deepseek/deepseek-chat',
       timestamp: Date.now(),
     };
 
@@ -99,7 +99,7 @@ describe('TypeScript Types Consistency', () => {
     // Verify DeepSeek V3.2 is in the type
     const modelIds = Object.keys(openrouter.OPENROUTER_MODELS);
 
-    expect(modelIds).toContain('deepseek/deepseek-v3.2');
+    expect(modelIds).toContain('deepseek/deepseek-chat');
     expect(modelIds).toContain('deepseek/deepseek-r1');
     expect(modelIds).toContain('anthropic/claude-sonnet-4-20250514');
   });

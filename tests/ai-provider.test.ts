@@ -1,82 +1,82 @@
 /**
  * AI Provider Service Tests
- * Validates provider selection and configuration
+ * Validates OpenRouter-only provider configuration
  */
 import { describe, it, expect, vi } from 'vitest';
 
 describe('AI Provider Configuration', () => {
-  it('should have correct provider list', async () => {
+  it('should have OpenRouter as only provider', async () => {
     const aiProvider = await import('../services/ai-provider');
 
-    const providerIds = aiProvider.PROVIDERS.map(p => p.id);
-
-    expect(providerIds).toContain('auto');
-    expect(providerIds).toContain('gemini');
-    expect(providerIds).toContain('claude');
-    expect(providerIds).toContain('opus');
-    expect(providerIds).toContain('openrouter');
-    expect(providerIds).toContain('dual');
+    expect(aiProvider.PROVIDERS).toHaveLength(1);
+    expect(aiProvider.PROVIDERS[0].id).toBe('openrouter');
   });
 
-  it('should have correct model names for providers', async () => {
+  it('should have correct model for OpenRouter', async () => {
     const aiProvider = await import('../services/ai-provider');
 
-    const gemini = aiProvider.PROVIDERS.find(p => p.id === 'gemini');
-    expect(gemini?.name).toBe('Gemini 2.0 Flash');
-
-    const claude = aiProvider.PROVIDERS.find(p => p.id === 'claude');
-    expect(claude?.name).toBe('Claude Sonnet 4');
-
-    const opus = aiProvider.PROVIDERS.find(p => p.id === 'opus');
-    expect(opus?.name).toBe('Claude Opus 4');
+    const openrouter = aiProvider.PROVIDERS[0];
+    expect(openrouter.name).toBe('DeepSeek V3 (via OpenRouter)');
+    expect(openrouter.model).toBe('deepseek/deepseek-chat');
+    expect(openrouter.icon).toBe('🔵');
   });
 });
 
-describe('Provider Auto-Selection', () => {
-  it('should select gemini for simple prompts', async () => {
+describe('Provider Selection', () => {
+  it('should always select openrouter', async () => {
     const aiProvider = await import('../services/ai-provider');
 
     const selected = aiProvider.selectBestProvider('Create a simple quiz', []);
-    expect(selected).toBe('gemini');
+    expect(selected).toBe('openrouter');
   });
 
-  it('should select opus for complex medical content', async () => {
+  it('should select openrouter for complex prompts too', async () => {
     const aiProvider = await import('../services/ai-provider');
 
     const selected = aiProvider.selectBestProvider(
       'Create a USMLE board-style case study with differential diagnosis',
       []
     );
-    expect(selected).toBe('opus');
+    expect(selected).toBe('openrouter');
   });
 
-  it('should select dual for images with complex content', async () => {
+  it('should select openrouter for image prompts', async () => {
     const aiProvider = await import('../services/ai-provider');
 
     const files = [{ base64: 'test', mimeType: 'image/png' }];
     const selected = aiProvider.selectBestProvider(
-      'Analyze this ECG and create a comprehensive case study with algorithm explanations',
+      'Analyze this ECG and create a case study',
       files
     );
-    expect(selected).toBe('dual');
+    expect(selected).toBe('openrouter');
   });
 });
 
 describe('Provider Info Retrieval', () => {
-  it('should return provider info by id', async () => {
+  it('should return OpenRouter info', async () => {
     const aiProvider = await import('../services/ai-provider');
 
-    const geminiInfo = aiProvider.getProviderInfo('gemini');
-    expect(geminiInfo.id).toBe('gemini');
-    expect(geminiInfo.icon).toBeDefined();
-    expect(geminiInfo.color).toBeDefined();
+    const info = aiProvider.getProviderInfo('openrouter');
+    expect(info.id).toBe('openrouter');
+    expect(info.icon).toBeDefined();
+    expect(info.color).toBeDefined();
   });
 
-  it('should return default provider for unknown id', async () => {
+  it('should return OpenRouter for any provider id', async () => {
     const aiProvider = await import('../services/ai-provider');
 
-    const unknownInfo = aiProvider.getProviderInfo('unknown' as any);
-    expect(unknownInfo).toBeDefined();
-    expect(unknownInfo.id).toBe('auto');
+    const info = aiProvider.getProviderInfo('openrouter');
+    expect(info).toBeDefined();
+    expect(info.id).toBe('openrouter');
+  });
+});
+
+describe('Provider Availability', () => {
+  it('should check for VITE_OPENROUTER_API_KEY', async () => {
+    const aiProvider = await import('../services/ai-provider');
+
+    // With test env vars from vitest.config.ts
+    const available = aiProvider.isProviderAvailable('openrouter');
+    expect(typeof available).toBe('boolean');
   });
 });
