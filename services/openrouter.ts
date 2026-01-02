@@ -12,35 +12,34 @@ export interface OpenRouterModel {
   pricing: { prompt: number; completion: number };
 }
 
-// Popular models available through OpenRouter
+// Popular models available through OpenRouter (Updated Jan 2025)
 export const OPENROUTER_MODELS = {
   // OpenAI
   'openai/gpt-4o': { name: 'GPT-4o', icon: '🟢', tier: 'premium' },
   'openai/gpt-4o-mini': { name: 'GPT-4o Mini', icon: '🟢', tier: 'fast' },
-  'openai/gpt-4-turbo': { name: 'GPT-4 Turbo', icon: '🟢', tier: 'premium' },
+  'openai/o1': { name: 'o1', icon: '🟢', tier: 'premium' },
+  'openai/o1-mini': { name: 'o1 Mini', icon: '🟢', tier: 'standard' },
 
-  // Anthropic
-  'anthropic/claude-3.5-sonnet': { name: 'Claude 3.5 Sonnet', icon: '🟠', tier: 'premium' },
-  'anthropic/claude-3-opus': { name: 'Claude 3 Opus', icon: '🟠', tier: 'premium' },
-  'anthropic/claude-3-haiku': { name: 'Claude 3 Haiku', icon: '🟠', tier: 'fast' },
+  // Anthropic Claude 4 (Latest)
+  'anthropic/claude-opus-4-20250514': { name: 'Claude Opus 4', icon: '🟠', tier: 'premium' },
+  'anthropic/claude-sonnet-4-20250514': { name: 'Claude Sonnet 4', icon: '🟠', tier: 'premium' },
+  'anthropic/claude-3.5-sonnet': { name: 'Claude 3.5 Sonnet', icon: '🟠', tier: 'standard' },
+  'anthropic/claude-3.5-haiku': { name: 'Claude 3.5 Haiku', icon: '🟠', tier: 'fast' },
 
   // Meta Llama
+  'meta-llama/llama-3.3-70b-instruct': { name: 'Llama 3.3 70B', icon: '🦙', tier: 'standard' },
   'meta-llama/llama-3.1-405b-instruct': { name: 'Llama 3.1 405B', icon: '🦙', tier: 'premium' },
-  'meta-llama/llama-3.1-70b-instruct': { name: 'Llama 3.1 70B', icon: '🦙', tier: 'standard' },
   'meta-llama/llama-3.1-8b-instruct': { name: 'Llama 3.1 8B', icon: '🦙', tier: 'fast' },
 
-  // Mistral
-  'mistralai/mistral-large': { name: 'Mistral Large', icon: '🌀', tier: 'premium' },
-  'mistralai/mixtral-8x22b-instruct': { name: 'Mixtral 8x22B', icon: '🌀', tier: 'standard' },
-  'mistralai/mistral-7b-instruct': { name: 'Mistral 7B', icon: '🌀', tier: 'fast' },
-
   // Google
-  'google/gemini-pro-1.5': { name: 'Gemini Pro 1.5', icon: '💎', tier: 'premium' },
+  'google/gemini-2.0-flash-001': { name: 'Gemini 2.0 Flash', icon: '💎', tier: 'premium' },
+  'google/gemini-2.5-pro-preview': { name: 'Gemini 2.5 Pro', icon: '💎', tier: 'premium' },
   'google/gemma-2-27b-it': { name: 'Gemma 2 27B', icon: '💎', tier: 'standard' },
 
-  // DeepSeek
+  // DeepSeek (V3.2 is latest & cheapest: $0.28/$0.42 per 1M tokens)
+  'deepseek/deepseek-v3.2': { name: 'DeepSeek V3.2', icon: '🔵', tier: 'fast' },
+  'deepseek/deepseek-r1': { name: 'DeepSeek R1', icon: '🔵', tier: 'premium' },
   'deepseek/deepseek-chat': { name: 'DeepSeek Chat', icon: '🔵', tier: 'fast' },
-  'deepseek/deepseek-coder': { name: 'DeepSeek Coder', icon: '🔵', tier: 'fast' },
 
   // Qwen
   'qwen/qwen-2.5-72b-instruct': { name: 'Qwen 2.5 72B', icon: '🟣', tier: 'standard' },
@@ -73,7 +72,7 @@ function getApiKey(): string {
  */
 export async function generateWithOpenRouter(
   prompt: string,
-  modelId: OpenRouterModelId = 'anthropic/claude-3.5-sonnet',
+  modelId: OpenRouterModelId = 'deepseek/deepseek-v3.2',
   files: FileInput[] = [],
   options: GenerationOptions = {}
 ): Promise<string> {
@@ -149,7 +148,7 @@ ${options.activityId ? `Activity type: ${options.activityId}` : ''}`;
 export async function refineWithOpenRouter(
   currentHtml: string,
   instruction: string,
-  modelId: OpenRouterModelId = 'anthropic/claude-3.5-sonnet'
+  modelId: OpenRouterModelId = 'deepseek/deepseek-v3.2'
 ): Promise<string> {
   const apiKey = getApiKey();
 
@@ -206,7 +205,7 @@ export async function bringToLife(
   files: FileInput[] = [],
   options: GenerationOptions & { model?: OpenRouterModelId } = {}
 ): Promise<string> {
-  const model = options.model || 'anthropic/claude-3.5-sonnet';
+  const model = options.model || 'deepseek/deepseek-v3.2';
   return generateWithOpenRouter(prompt, model, files, options);
 }
 
@@ -216,7 +215,7 @@ export async function bringToLife(
 export async function refineArtifact(
   currentHtml: string,
   instruction: string,
-  model: OpenRouterModelId = 'anthropic/claude-3.5-sonnet'
+  model: OpenRouterModelId = 'deepseek/deepseek-v3.2'
 ): Promise<string> {
   return refineWithOpenRouter(currentHtml, instruction, model);
 }

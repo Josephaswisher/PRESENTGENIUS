@@ -26,7 +26,7 @@ export const Hero: React.FC = () => {
         </h1>
 
         <p className="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto mb-16 leading-relaxed font-medium animate-reveal animate-stagger-1">
-          The world's first medical workspace powered by <span className="text-cyan-400">Gemini 2.0</span> and <span className="text-purple-400">Claude 3.5</span>.
+          The world's first medical workspace powered by <span className="text-cyan-400">Gemini 2.5</span> and <span className="text-purple-400">Claude Opus 4</span>.
           Turn clinical chaos into teaching pearls in seconds.
         </p>
 
