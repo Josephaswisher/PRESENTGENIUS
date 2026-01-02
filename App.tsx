@@ -12,7 +12,7 @@ import { DrSwisherResearchPanel } from './components/DrSwisherResearchPanel';
 import { BoardQuestionsPanel } from './components/BoardQuestionsPanel';
 import { PrintablesPanel } from './components/PrintablesPanel';
 import { InteractiveCanvas } from './components/InteractiveCanvas';
-import { FileInput, GenerationOptions } from './services/gemini';
+import { FileInput, GenerationOptions } from './services/ai-provider';
 import { generateWithProvider, refineWithProvider, AIProvider, GenerationPhase } from './services/ai-provider';
 import { savePresentation, isSupabaseConfigured, savePromptHistory } from './services/supabase';
 import { backupPresentation, restoreGoogleDriveSession, isGoogleDriveConnected } from './services/google-drive';
@@ -29,7 +29,7 @@ const App: React.FC = () => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   // AI Provider state
-  const [currentProvider, setCurrentProvider] = useState<AIProvider>('gemini');
+  const [currentProvider, setCurrentProvider] = useState<AIProvider>('openrouter');
 
   // Generation progress state
   const [genPhase, setGenPhase] = useState<GenerationPhase>('starting');
@@ -108,7 +108,7 @@ const App: React.FC = () => {
     promptText: string,
     files: File[] = [],
     options: GenerationOptions = {},
-    provider: AIProvider = 'gemini'
+    provider: AIProvider = 'openrouter'
   ) => {
     setIsGenerating(true);
     setActiveCreation(null);
@@ -181,8 +181,8 @@ const App: React.FC = () => {
       }
     } catch (error: any) {
       console.error("Generation failed:", error);
-      if (error.message && (error.message.includes("VITE_GEMINI_API_KEY") || error.message.includes("API key"))) {
-        alert("Missing API Key!\n\nPlease check your .env file and ensure VITE_GEMINI_API_KEY or VITE_ANTHROPIC_API_KEY is set.\n\nSee .env.example for details.");
+      if (error.message && (error.message.includes("VITE_OPENROUTER_API_KEY") || error.message.includes("API key"))) {
+        alert("Missing API Key!\n\nPlease add VITE_OPENROUTER_API_KEY to your Vercel environment variables.\n\nGet your key at: https://openrouter.ai/keys");
       } else {
         alert(`Generation failed: ${error.message || "Something went wrong. Please try again."}`);
       }
