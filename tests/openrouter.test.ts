@@ -6,23 +6,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Test the model configuration directly
 describe('OpenRouter Model Configuration', () => {
-  it('should have DeepSeek V3.2 as default model ID', async () => {
+  it('should have DeepSeek V3 as default model ID', async () => {
     // Import the module to test model configuration
     const openrouter = await import('../services/openrouter');
 
-    // Check OPENROUTER_MODELS contains V3.2
-    expect(openrouter.OPENROUTER_MODELS).toHaveProperty('deepseek/deepseek-v3.2');
-    expect(openrouter.OPENROUTER_MODELS['deepseek/deepseek-v3.2'].name).toBe('DeepSeek V3.2');
-    expect(openrouter.OPENROUTER_MODELS['deepseek/deepseek-v3.2'].tier).toBe('fast');
+    // Check OPENROUTER_MODELS contains deepseek-chat (V3)
+    expect(openrouter.OPENROUTER_MODELS).toHaveProperty('deepseek/deepseek-chat');
+    expect(openrouter.OPENROUTER_MODELS['deepseek/deepseek-chat'].name).toBe('DeepSeek V3');
+    expect(openrouter.OPENROUTER_MODELS['deepseek/deepseek-chat'].tier).toBe('fast');
   });
 
   it('should have all required DeepSeek models', async () => {
     const openrouter = await import('../services/openrouter');
 
     const requiredModels = [
-      'deepseek/deepseek-v3.2',
-      'deepseek/deepseek-r1',
       'deepseek/deepseek-chat',
+      'deepseek/deepseek-r1',
     ];
 
     requiredModels.forEach(modelId => {
@@ -82,7 +81,7 @@ describe('OpenRouter API Call Structure', () => {
     }
   });
 
-  it('should use DeepSeek V3.2 as default model in request', async () => {
+  it('should use DeepSeek V3 as default model in request', async () => {
     const openrouter = await import('../services/openrouter');
 
     try {
@@ -94,7 +93,7 @@ describe('OpenRouter API Call Structure', () => {
     const fetchCall = (global.fetch as any).mock.calls[0];
     if (fetchCall) {
       const body = JSON.parse(fetchCall[1].body);
-      expect(body.model).toBe('deepseek/deepseek-v3.2');
+      expect(body.model).toBe('deepseek/deepseek-chat');
     }
   });
 
