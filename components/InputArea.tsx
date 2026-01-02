@@ -33,6 +33,7 @@ import {
 import { ActivitySelector } from './ActivitySelector';
 import { LearnerLevelSelector } from './LearnerLevelSelector';
 import { TemplateQueue, QueuedTemplate } from './TemplateQueue';
+import { FormatPicker } from './FormatPicker';
 import { Activity, LearnerLevel } from '../data/activities';
 import { GenerationOptions } from '../services/gemini';
 import { AIProvider, PROVIDERS, getProviderInfo } from '../services/ai-provider';
@@ -866,135 +867,32 @@ IMPORTANT:
                       <Squares2X2Icon className="w-5 h-5 text-cyan-400" />
                       <div className="text-left">
                         <div className="text-sm font-medium text-white">
-                          Output Configuration
+                          Output Format
                           <span className="ml-2 text-xs text-cyan-400">
-                            ({selectedFormats.size} format{selectedFormats.size !== 1 ? 's' : ''})
-                            {selectedSupplementary.size > 0 && ` + ${selectedSupplementary.size} extra`}
+                            ({selectedFormats.size} format{selectedFormats.size !== 1 ? 's' : ''} selected)
                           </span>
                         </div>
                         <div className="text-xs text-zinc-500">
-                          {Array.from(selectedFormats).map(f => PRIMARY_FORMATS.find(pf => pf.id === f)?.name).join(', ')}
-                          {selectedSupplementary.size > 0 && ` + ${Array.from(selectedSupplementary).map(f => SUPPLEMENTARY_FORMATS.find(sf => sf.id === f)?.name).join(', ')}`}
+                          Click to choose presentation format
                         </div>
                       </div>
                     </div>
                     {showOutputConfig ? <ChevronUpIcon className="w-5 h-5 text-zinc-400" /> : <ChevronDownIcon className="w-5 h-5 text-zinc-400" />}
                   </button>
 
-                  {/* Expanded Output Config */}
+                  {/* Expanded Format Picker */}
                   {showOutputConfig && (
-                    <div className="space-y-6 p-4 bg-zinc-900/50 rounded-xl border border-zinc-800">
-                      {/* Primary Formats - Multi-select with sub-options */}
-                      <div>
-                        <h4 className="text-xs text-zinc-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-                          <span className="w-2 h-2 bg-cyan-500 rounded-full"></span>
-                          Primary Formats (select one or more)
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {PRIMARY_FORMATS.map((format) => (
-                            <div
-                              key={format.id}
-                              className={`rounded-xl border-2 transition-all overflow-hidden ${
-                                selectedFormats.has(format.id)
-                                  ? 'border-cyan-500 bg-cyan-500/5'
-                                  : 'border-zinc-700 bg-zinc-800/30 hover:border-zinc-600'
-                              }`}
-                            >
-                              <button
-                                onClick={() => toggleFormat(format.id)}
-                                className="w-full flex items-center gap-3 p-3"
-                              >
-                                <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
-                                  selectedFormats.has(format.id)
-                                    ? 'bg-cyan-500 border-cyan-500'
-                                    : 'border-zinc-600'
-                                }`}>
-                                  {selectedFormats.has(format.id) && (
-                                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                    </svg>
-                                  )}
-                                </div>
-                                <div className="flex-1 text-left">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-cyan-400">{format.icon}</span>
-                                    <span className="font-medium text-white">{format.name}</span>
-                                  </div>
-                                  <p className="text-xs text-zinc-500 mt-0.5">{format.desc}</p>
-                                </div>
-                              </button>
-
-                              {/* Sub-options when selected */}
-                              {selectedFormats.has(format.id) && format.subOptions && (
-                                <div className="px-3 pb-3 space-y-1 border-t border-zinc-700/50 pt-2 mt-1">
-                                  {format.subOptions.map((sub) => (
-                                    <button
-                                      key={sub.id}
-                                      onClick={() => setSelectedSubOptions(prev => ({ ...prev, [format.id]: sub.id }))}
-                                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs transition-all ${
-                                        selectedSubOptions[format.id] === sub.id
-                                          ? 'bg-cyan-600/20 text-cyan-300'
-                                          : 'text-zinc-400 hover:bg-zinc-700/50 hover:text-white'
-                                      }`}
-                                    >
-                                      {selectedSubOptions[format.id] === sub.id && '• '}{sub.label}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Supplementary Outputs */}
-                      <div>
-                        <h4 className="text-xs text-zinc-400 uppercase tracking-wide mb-3 flex items-center gap-2">
-                          <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
-                          Supplementary Outputs (add alongside primary)
-                        </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {SUPPLEMENTARY_FORMATS.map((format) => (
-                            <button
-                              key={format.id}
-                              onClick={() => toggleSupplementary(format.id)}
-                              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
-                                selectedSupplementary.has(format.id)
-                                  ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50'
-                                  : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-500 hover:text-white'
-                              }`}
-                            >
-                              {format.icon}
-                              {format.name}
-                              {selectedSupplementary.has(format.id) && (
-                                <XMarkIcon className="w-4 h-4 ml-1" />
-                              )}
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Quiz sub-options if selected */}
-                        {selectedSupplementary.has('quiz') && (
-                          <div className="mt-2 flex flex-wrap gap-1 pl-2">
-                            {SUPPLEMENTARY_FORMATS.find(f => f.id === 'quiz')?.subOptions?.map((sub) => (
-                              <button
-                                key={sub.id}
-                                onClick={() => setSelectedSubOptions(prev => ({ ...prev, quiz: sub.id }))}
-                                className={`px-2 py-1 rounded text-xs ${
-                                  selectedSubOptions['quiz'] === sub.id
-                                    ? 'bg-purple-600 text-white'
-                                    : 'bg-zinc-700 text-zinc-400 hover:text-white'
-                                }`}
-                              >
-                                {sub.label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                    <div className="p-4 bg-zinc-900/50 rounded-xl border border-zinc-800">
+                      <FormatPicker
+                        selectedFormats={selectedFormats}
+                        onToggleFormat={toggleFormat}
+                        selectedSubOptions={selectedSubOptions}
+                        onSubOptionChange={(formatId, subId) => setSelectedSubOptions(prev => ({ ...prev, [formatId]: subId }))}
+                        disabled={isGenerating || disabled}
+                      />
 
                       {/* Visual Style */}
-                      <div>
+                      <div className="mt-6 pt-4 border-t border-zinc-800">
                         <h4 className="text-xs text-zinc-400 uppercase tracking-wide mb-3 flex items-center gap-2">
                           <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
                           Visual Style
@@ -1019,7 +917,7 @@ IMPORTANT:
                       </div>
 
                       {/* Modifiers */}
-                      <div>
+                      <div className="mt-4">
                         <h4 className="text-xs text-zinc-400 uppercase tracking-wide mb-3 flex items-center gap-2">
                           <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                           Output Modifiers

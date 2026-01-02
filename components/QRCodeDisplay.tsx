@@ -34,12 +34,16 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({
   const [audienceCount, setAudienceCount] = useState(0);
 
   useEffect(() => {
-    // Create a new session
-    const newSession = createSession(title, totalSlides);
-    setSession(newSession);
-    if (onSessionCreated) {
-      onSessionCreated(newSession);
-    }
+    const initSession = async () => {
+      // Create a new session with a temporary presenter ID if not logged in
+      const presenterId = `host-${Date.now()}`;
+      const newSession = await createSession(title, totalSlides, presenterId);
+      setSession(newSession);
+      if (onSessionCreated) {
+        onSessionCreated(newSession);
+      }
+    };
+    initSession();
   }, [title, totalSlides, onSessionCreated]);
 
   const followUrl = session ? getFollowAlongUrl(session.code) : '';

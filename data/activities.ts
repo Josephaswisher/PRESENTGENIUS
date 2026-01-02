@@ -4,12 +4,22 @@
  * 50+ Interactive Activities for Medical Education
  */
 
-// Import template prompt augmentations
+// Import template prompt augmentations (legacy - keeping for backward compatibility)
 import { BOARD_MCQ_PROMPT_AUGMENT } from '../templates/board-mcq';
 import { CLINICAL_TF_PROMPT_AUGMENT } from '../templates/clinical-tf';
 import { DECISION_TREE_PROMPT_AUGMENT } from '../templates/decision-tree';
 import { JEOPARDY_PROMPT_AUGMENT } from '../templates/jeopardy';
 import { VISUAL_DIAGNOSIS_PROMPT_AUGMENT } from '../templates/visual-diagnosis';
+
+// Import new format templates from reorganized structure
+import { getPromptAugment } from '../templates';
+
+// New format prompt augments
+const INFOGRAPHIC_PROMPT_AUGMENT = getPromptAugment('infographic');
+const JOURNAL_CLUB_PROMPT_AUGMENT = getPromptAugment('journal-club');
+const DIAGNOSIS_MANNEQUIN_PROMPT_AUGMENT = getPromptAugment('diagnosis-mannequin');
+const CHIEF_COMPLAINT_PROMPT_AUGMENT = getPromptAugment('chief-complaint-approach');
+const PRESENTATION_STANDARD_PROMPT_AUGMENT = getPromptAugment('presentation-standard');
 
 export type LearnerLevel = 'MS3-4' | 'PGY1' | 'PGY2-3' | 'Fellow';
 export type ActivityTier = 'core' | 'gamification' | 'diagnostic' | 'simulation' | 'metacognition' | 'team' | 'narrative' | 'creative';
@@ -718,6 +728,55 @@ DESIGN:
 - Teaches pattern recognition across presentations
 - System-based thinking
 `
+  },
+
+  // ============================================================
+  // NEW FORMAT ACTIVITIES (Added Dec 2025)
+  // ============================================================
+  {
+    id: 'infographic',
+    name: 'Medical Infographic',
+    icon: '📊',
+    description: 'Visual single-page summary with key statistics and icons',
+    tier: 'creative',
+    learnerLevels: ['MS3-4', 'PGY1', 'PGY2-3', 'Fellow'],
+    systemPromptAugment: INFOGRAPHIC_PROMPT_AUGMENT
+  },
+  {
+    id: 'journal-club',
+    name: 'Journal Club Presentation',
+    icon: '📚',
+    description: 'PICO framework with critical appraisal and discussion points',
+    tier: 'narrative',
+    learnerLevels: ['PGY2-3', 'Fellow'],
+    systemPromptAugment: JOURNAL_CLUB_PROMPT_AUGMENT
+  },
+  {
+    id: 'diagnosis-mannequin',
+    name: 'Diagnosis Mannequin',
+    icon: '🧍',
+    description: 'Interactive body diagram with clickable exam regions',
+    tier: 'simulation',
+    learnerLevels: ['MS3-4', 'PGY1', 'PGY2-3'],
+    systemPromptAugment: DIAGNOSIS_MANNEQUIN_PROMPT_AUGMENT
+  },
+  {
+    id: 'chief-complaint-approach',
+    name: 'Chief Complaint Approach',
+    icon: '🩺',
+    description: 'Algorithmic symptom workup with differential and management',
+    tier: 'diagnostic',
+    learnerLevels: ['MS3-4', 'PGY1', 'PGY2-3'],
+    systemPromptAugment: CHIEF_COMPLAINT_PROMPT_AUGMENT
+  },
+  {
+    id: 'presentation-standard',
+    name: 'Standard Presentation',
+    icon: '📽️',
+    description: 'Traditional slide deck with progressive reveal',
+    tier: 'core',
+    learnerLevels: ['MS3-4', 'PGY1', 'PGY2-3', 'Fellow'],
+    systemPromptAugment: PRESENTATION_STANDARD_PROMPT_AUGMENT
   },
 ];
 

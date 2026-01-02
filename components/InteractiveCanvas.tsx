@@ -1,6 +1,7 @@
 /**
  * Interactive Canvas - Unified Lecture Builder for Dr. Swisher
  * Combines Socratic outline + Multi-source research + AI Chat Assistant
+ * ENHANCED: Drag-drop, Visual Timeline, AI Suggestions, Collaborative Cursors
  */
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -20,13 +21,16 @@ import {
   MagnifyingGlassIcon,
   Cog6ToothIcon,
   PaperAirplaneIcon,
-  ChatBubbleLeftRightIcon,
+  CursorArrowRaysIcon,
+  ArrowsUpDownIcon,
+  CubeIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { generateWithProvider, AIProvider } from '../services/ai-provider';
 import { searchMedicalEvidence, getLatestGuidelines } from '../services/perplexity';
-import { 
-  searchUpToDate, 
-  searchMKSAP, 
+import {
+  searchUpToDate,
+  searchMKSAP,
   searchPubMed,
   checkScraperHealth,
   loginUpToDate,
@@ -34,6 +38,18 @@ import {
   formatSearchResults,
   type ScraperStatus,
 } from '../services/medical-scrapers';
+import { useCollaborationStore } from '../stores/collaboration.store';
+import {
+  ChatMessage,
+  TypingIndicator,
+  ConversationStarters,
+  ContextPill,
+  AssistantStatus,
+  KeyboardHint,
+} from './ChatMessage';
+import TextareaAutosize from 'react-textarea-autosize';
+import { Hero } from './Hero';
+import { MicrophoneIcon } from '@heroicons/react/24/solid';
 
 // Types
 type ResearchSource = 'uptodate' | 'mksap' | 'perplexity' | 'pubmed';
@@ -82,6 +98,33 @@ interface ChatMessage {
   action?: 'research' | 'outline' | 'section' | 'modify';
 }
 
+// Drag and drop types
+interface DragItem {
+  id: string;
+  type: 'section';
+  index: number;
+}
+
+// AI Suggestion
+interface AISuggestion {
+  id: string;
+  type: 'add_section' | 'expand_section' | 'add_question' | 'modify_content';
+  title: string;
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+  action: () => void;
+}
+
+// Timeline node
+interface TimelineNode {
+  sectionId: string;
+  title: string;
+  type: Section['type'];
+  slideCount: number;
+  completed: boolean;
+  active: boolean;
+}
+
 interface Props {
   onGenerateSlides: (doc: CanvasDocument) => void;
   currentProvider: AIProvider;
@@ -124,6 +167,7 @@ const AI_PROVIDERS: { id: AIProvider; name: string; icon: string }[] = [
   { id: 'gemini', name: 'Gemini 3 Flash', icon: '⚡' },
   { id: 'opus', name: 'Claude Opus', icon: '👑' },
   { id: 'claude', name: 'Claude Sonnet', icon: '🎭' },
+  { id: 'openrouter', name: 'OpenRouter', icon: '🌐' },
 ];
 
 const QUICK_ACTIONS = [
@@ -133,8 +177,8 @@ const QUICK_ACTIONS = [
   { label: 'Board questions', prompt: 'Suggest board-style questions I should include' },
 ];
 
-export const InteractiveCanvas: React.FC<Props> = ({ 
-  onGenerateSlides, 
+export const InteractiveCanvas: React.FC<Props> = ({
+  onGenerateSlides,
   currentProvider,
   onProviderChange,
 }) => {
@@ -145,37 +189,119 @@ export const InteractiveCanvas: React.FC<Props> = ({
     sections: [],
   });
 
+  // Collaboration Store
+  const { isConnected, isConnecting, connectionError, activeUsers, cursors, connect, disconnect, updateCursor } = useCollaborationStore();
+  const [showCollaborators, setShowCollaborators] = useState(false);
+
+  // Auto-connect on mount (mock user for demo)
+  useEffect(() => {
+    if (showCollaborators && !isConnected) {
+      connect('demo-session', { id: `user-${Date.now()}`, name: 'Dr. Current' });
+    }
+    return () => {
+      if (isConnected) disconnect();
+    };
+  }, [showCollaborators]);
+
+  // Track mouse movement
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isConnected) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    updateCursor(x, y);
+  };
+
   // Loading states
   const [isResearching, setIsResearching] = useState(false);
   const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
   const [generatingQuestionsFor, setGeneratingQuestionsFor] = useState<string | null>(null);
   const [expandingSection, setExpandingSection] = useState<string | null>(null);
-  
+
   // Research config
   const [selectedSources, setSelectedSources] = useState<ResearchSource[]>(['uptodate', 'perplexity']);
   const [globalResearch, setGlobalResearch] = useState<ResearchResult[]>([]);
-  
+
   // Service status
   const [scraperStatus, setScraperStatus] = useState<ScraperStatus | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Panel collapse states
+  // Panel collapse states and resizable widths
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(288); // 18rem = 288px
+  const [rightPanelWidth, setRightPanelWidth] = useState(384); // 24rem = 384px
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+
+  // Resize handlers
+  const handleLeftResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingLeft(true);
+  };
+
+  const handleRightResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingRight(true);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingLeft) {
+        const newWidth = Math.min(Math.max(e.clientX, 200), 500);
+        setLeftPanelWidth(newWidth);
+      }
+      if (isResizingRight) {
+        const newWidth = Math.min(Math.max(window.innerWidth - e.clientX, 280), 600);
+        setRightPanelWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingLeft(false);
+      setIsResizingRight(false);
+    };
+
+    if (isResizingLeft || isResizingRight) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingLeft, isResizingRight]);
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
       role: 'assistant',
-      content: "Hi Dr. Swisher! I'm your lecture building assistant. Tell me what topic you'd like to teach, or ask me to help refine your outline. I can research topics, suggest sections, add clinical cases, or help structure your content.",
+      content: "Hi Dr. Swisher! I'm your lecture building assistant. Just tell me what you want to teach and I'll help you build it.\n\n**Try saying:**\n- \"Help me build a presentation on heart failure\"\n- \"Create a lecture on diabetic ketoacidosis for residents\"\n- \"I need a 45-minute talk on acute coronary syndrome\"\n\nI'll ask a few questions, research the topic, create an outline, and generate your slides!",
       timestamp: new Date(),
     }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isChatProcessing, setIsChatProcessing] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Drag and drop state
+  const [draggedItem, setDraggedItem] = useState<DragItem | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  // AI Suggestions state
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Timeline state
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
 
   // Check scraper on mount
   useEffect(() => {
@@ -187,10 +313,133 @@ export const InteractiveCanvas: React.FC<Props> = ({
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  // Generate AI suggestions when outline changes
+  useEffect(() => {
+    if (doc.sections.length > 0 && !isAnalyzing) {
+      generateAISuggestions();
+    }
+  }, [doc.sections.length]);
+
+  // Generate AI suggestions
+  const generateAISuggestions = async () => {
+    setIsAnalyzing(true);
+    try {
+      const suggestions: AISuggestion[] = [];
+
+      // Check for missing section types
+      const sectionTypes = new Set(doc.sections.map(s => s.type));
+      const potentialTypes: Section['type'][] = ['case', 'mechanism', 'clinical'];
+      const missingTypes = potentialTypes.filter(t => !sectionTypes.has(t));
+
+      missingTypes.forEach((sectionType, i) => {
+        suggestions.push({
+          id: `suggest-${sectionType}-${i}`,
+          type: 'add_section',
+          title: `Add a ${sectionType} section`,
+          description: `Lectures benefit from ${sectionType} examples to reinforce learning.`,
+          priority: 'medium',
+          action: () => {
+            const newSection: Section = {
+              id: `section-${Date.now()}`,
+              title: sectionType === 'case' ? 'Clinical Case' : sectionType === 'mechanism' ? 'Pathophysiology' : 'Clinical Application',
+              type: sectionType,
+              content: '',
+              keyPoints: [],
+              slideCount: 4,
+              isExpanded: true,
+              followUpQuestions: [],
+            };
+            setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
+          },
+        });
+      });
+
+      // Check for sections without content
+      doc.sections.forEach((section, idx) => {
+        if (!section.content) {
+          suggestions.push({
+            id: `expand-${section.id}`,
+            type: 'expand_section',
+            title: `Expand "${section.title}"`,
+            description: 'This section lacks detailed content.',
+            priority: 'high',
+            action: () => expandSection(section.id),
+          });
+        }
+      });
+
+      // Check if sections need questions
+      doc.sections.forEach((section) => {
+        if (section.content && section.followUpQuestions.length === 0) {
+          suggestions.push({
+            id: `questions-${section.id}`,
+            type: 'add_question',
+            title: `Add questions to "${section.title}"`,
+            description: 'Socratic questions engage learners and check understanding.',
+            priority: 'medium',
+            action: () => generateSocraticQuestions(section.id),
+          });
+        }
+      });
+
+      setAiSuggestions(suggestions);
+    } catch (e) {
+      console.error('Failed to generate suggestions:', e);
+    }
+    setIsAnalyzing(false);
+  };
+
+  // Drag handlers
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedItem({ id: doc.sections[index].id, type: 'section', index });
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (!draggedItem || draggedItem.index === dropIndex) {
+      setDragOverIndex(null);
+      setDraggedItem(null);
+      return;
+    }
+
+    const newSections = [...doc.sections];
+    const [removed] = newSections.splice(draggedItem.index, 1);
+    newSections.splice(dropIndex, 0, removed);
+
+    setDoc(prev => ({ ...prev, sections: newSections }));
+    setDragOverIndex(null);
+    setDraggedItem(null);
+  };
+
+  // Generate timeline nodes
+  const getTimelineNodes = (): TimelineNode[] => {
+    return doc.sections.map((section, i) => ({
+      sectionId: section.id,
+      title: section.title,
+      type: section.type,
+      slideCount: section.slideCount,
+      completed: !!section.content,
+      active: activeSectionId === section.id,
+    }));
+  };
+
+  // Calculate progress
+  const getProgress = () => {
+    if (doc.sections.length === 0) return 0;
+    const completed = doc.sections.filter(s => s.content).length;
+    return Math.round((completed / doc.sections.length) * 100);
+  };
+
   // Toggle research source
   const toggleSource = (source: ResearchSource) => {
-    setSelectedSources(prev => 
-      prev.includes(source) 
+    setSelectedSources(prev =>
+      prev.includes(source)
         ? prev.filter(s => s !== source)
         : [...prev, source]
     );
@@ -231,44 +480,97 @@ export const InteractiveCanvas: React.FC<Props> = ({
       const contextParts = [];
       if (doc.topic) contextParts.push(`Current topic: "${doc.topic}"`);
       if (doc.sections.length > 0) {
-        contextParts.push(`Current outline (${doc.sections.length} sections):\n${doc.sections.map((s, i) => 
-          `${i+1}. ${s.title} (${s.type}) - ${s.keyPoints.join(', ')}`
+        contextParts.push(`Current outline (${doc.sections.length} sections):\n${doc.sections.map((s, i) =>
+          `${i + 1}. ${s.title} (${s.type}) - ${s.keyPoints.join(', ')}`
         ).join('\n')}`);
       }
       if (globalResearch.length > 0) {
         contextParts.push(`Research available from: ${globalResearch.map(r => r.source).join(', ')}`);
       }
 
-      const systemPrompt = `You are Dr. Swisher's lecture building assistant for PRESENTGENIUS. You help create medical education presentations.
+      const systemPrompt = `You are Dr. Swisher's lecture building assistant for PRESENTGENIUS. You help create medical education presentations through natural conversation.
 
 CURRENT STATE:
 ${contextParts.length > 0 ? contextParts.join('\n\n') : 'No lecture started yet.'}
 Target Audience: ${doc.targetAudience}
 Duration: ${doc.duration} minutes
 
-You can help by:
-1. Suggesting lecture topics and structures
-2. Recommending sections to add or modify
-3. Providing clinical pearls and teaching points
-4. Suggesting board-style questions
-5. Helping refine content and flow
+YOUR ROLE: Be a proactive co-creator. When the user wants to build a presentation:
+1. If they mention a topic, immediately set it AND ask 1-2 clarifying questions (audience? specific angle? duration?)
+2. Once you have enough info, offer to generate an outline or research the topic
+3. Guide them through building the full presentation step by step
+4. Be conversational and encouraging, like a helpful colleague
 
-If the user asks to SET THE TOPIC, respond with: [ACTION:SET_TOPIC:topic name here]
-If the user asks to ADD A SECTION, respond with: [ACTION:ADD_SECTION:{"title":"...","type":"concept|case|mechanism|clinical","keyPoints":["..."]}]
-If the user asks to RESEARCH, respond with: [ACTION:RESEARCH]
-If the user asks to GENERATE OUTLINE, respond with: [ACTION:GENERATE_OUTLINE]
+CONVERSATION FLOW for "help me build a presentation on X":
+1. Acknowledge the topic and set it with [ACTION:SET_TOPIC:X]
+2. Ask: "Great topic! Who's your audience - medical students, residents, fellows, or attendings? And how long should this be?"
+3. When they answer, use [ACTION:SET_AUDIENCE:...] and [ACTION:SET_DURATION:...]
+4. Then say "Let me research this and create an outline for you" and use [ACTION:RESEARCH] then [ACTION:GENERATE_OUTLINE]
+5. After outline is ready, offer to expand sections or generate the final slides
 
-Be concise, practical, and focused on high-yield medical education. Always be helpful and proactive.`;
+AVAILABLE ACTIONS:
+- [ACTION:SET_TOPIC:topic] - Set the lecture topic
+- [ACTION:ADD_SECTION:{"title":"...","type":"intro|concept|case|mechanism|clinical|summary","keyPoints":["..."]}] - Add section
+- [ACTION:REMOVE_SECTION:title or index] - Remove section
+- [ACTION:MODIFY_SECTION:{"index":0,"title":"...","type":"...","keyPoints":["..."]}] - Modify section
+- [ACTION:EXPAND_SECTION:title or index] - Expand with AI content
+- [ACTION:SET_AUDIENCE:students|residents|fellows|attendings] - Set audience
+- [ACTION:SET_DURATION:number] - Set duration in minutes
+- [ACTION:RESEARCH] - Research the topic
+- [ACTION:GENERATE_OUTLINE] - Generate AI outline
+- [ACTION:GENERATE_SLIDES] - Generate final presentation
+- [ACTION:FULL_BUILD] - Run full workflow: research → outline → expand all → generate slides
 
-      const response = await generateWithProvider(currentProvider, userMessage, [], {
-        systemPrompt,
-      });
+CRITICAL: ALWAYS include action tags when the user wants you to do something. Be proactive!
+If user says "build me a presentation on heart failure", respond with [ACTION:SET_TOPIC:Heart Failure] and ask about audience.
+If user says "just build it" or "go ahead", use [ACTION:FULL_BUILD] to run the complete workflow.
 
-      // Parse for actions
-      const actionMatch = response.match(/\[ACTION:(\w+)(?::(.+?))?\]/);
-      if (actionMatch) {
-        const [, action, payload] = actionMatch;
-        const cleanResponse = response.replace(/\[ACTION:.+?\]/g, '').trim();
+Be concise, warm, and focused on high-yield medical education.`;
+
+      const response = await generateWithProvider(currentProvider, `${systemPrompt}\n\nUSER: ${userMessage}`, [], {});
+
+      // Parse for actions with robust handling for JSON arrays containing ']'
+      let action: string | undefined;
+      let payload: string | undefined;
+      let cleanResponse = response;
+
+      const actionStart = response.indexOf('[ACTION:');
+      if (actionStart !== -1) {
+        const actionEnd = response.lastIndexOf(']');
+        if (actionEnd > actionStart) {
+          const fullAction = response.slice(actionStart, actionEnd + 1);
+          // Match the action name and grab everything else as payload.
+          // Using [\s\S]* to capture multiline JSON payloads.
+          const contentMatch = fullAction.match(/\[ACTION:(\w+)(?::([\s\S]*))?\]/);
+
+          if (contentMatch) {
+            action = contentMatch[1];
+            payload = contentMatch[2] ? contentMatch[2].trim() : undefined;
+            cleanResponse = response.replace(fullAction, '').trim();
+          }
+        }
+      }
+
+      if (action) {
+        const parseActionPayload = (data: string) => {
+          try {
+            // Remove potential markdown code blocks and trailing text
+            const cleaned = data.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
+            return JSON.parse(cleaned);
+          } catch (e) {
+            // Try to find a JSON block if initial parse fails
+            const match = data.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+            if (match) {
+              try {
+                return JSON.parse(match[0]);
+              } catch (inner) {
+                console.error('Inner parse failed:', inner);
+                return null;
+              }
+            }
+            return null;
+          }
+        };
 
         switch (action) {
           case 'SET_TOPIC':
@@ -278,8 +580,8 @@ Be concise, practical, and focused on high-yield medical education. Always be he
             break;
           case 'ADD_SECTION':
             if (payload) {
-              try {
-                const sectionData = JSON.parse(payload);
+              const sectionData = parseActionPayload(payload);
+              if (sectionData) {
                 const newSection: Section = {
                   id: `section-${Date.now()}`,
                   title: sectionData.title || 'New Section',
@@ -291,8 +593,55 @@ Be concise, practical, and focused on high-yield medical education. Always be he
                   followUpQuestions: [],
                 };
                 setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
-              } catch (e) {
-                console.error('Failed to parse section:', e);
+              }
+            }
+            break;
+          case 'MODIFY_SECTION':
+            if (payload) {
+              const modData = parseActionPayload(payload);
+              if (modData) {
+                const targetIndex = modData.index ?? 0;
+                setDoc(prev => ({
+                  ...prev,
+                  sections: prev.sections.map((s, i) =>
+                    i === targetIndex
+                      ? {
+                        ...s,
+                        title: modData.title ?? s.title,
+                        type: modData.type ?? s.type,
+                        keyPoints: modData.keyPoints ?? s.keyPoints,
+                      }
+                      : s
+                  )
+                }));
+              }
+            }
+            break;
+          case 'EXPAND_SECTION':
+            if (payload) {
+              const indexOrTitle = payload.trim();
+              const idx = parseInt(indexOrTitle);
+              const section = !isNaN(idx)
+                ? doc.sections[idx]
+                : doc.sections.find(s => s.title.toLowerCase().includes(indexOrTitle.toLowerCase()));
+              if (section) {
+                expandSection(section.id);
+              }
+            }
+            break;
+          case 'SET_AUDIENCE':
+            if (payload) {
+              const audience = payload.trim().toLowerCase();
+              if (['students', 'residents', 'fellows', 'attendings'].includes(audience)) {
+                setDoc(prev => ({ ...prev, targetAudience: audience }));
+              }
+            }
+            break;
+          case 'SET_DURATION':
+            if (payload) {
+              const duration = parseInt(payload.trim());
+              if (!isNaN(duration) && duration > 0) {
+                setDoc(prev => ({ ...prev, duration }));
               }
             }
             break;
@@ -301,6 +650,57 @@ Be concise, practical, and focused on high-yield medical education. Always be he
             break;
           case 'GENERATE_OUTLINE':
             generateOutline();
+            break;
+          case 'GENERATE_SLIDES':
+            onGenerateSlides(doc);
+            break;
+          case 'FULL_BUILD':
+            // Run the complete workflow: research → outline → expand → generate
+            (async () => {
+              setChatMessages(prev => [...prev, {
+                id: `system-${Date.now()}`,
+                role: 'assistant',
+                content: '🚀 Starting full build workflow...\n\n**Step 1/4:** Researching your topic...',
+                timestamp: new Date(),
+              }]);
+              await researchTopic();
+
+              setChatMessages(prev => [...prev, {
+                id: `system-${Date.now()}`,
+                role: 'assistant',
+                content: '✅ Research complete!\n\n**Step 2/4:** Generating outline...',
+                timestamp: new Date(),
+              }]);
+              await generateOutline();
+
+              // Wait for sections to be populated
+              await new Promise(resolve => setTimeout(resolve, 500));
+
+              setChatMessages(prev => [...prev, {
+                id: `system-${Date.now()}`,
+                role: 'assistant',
+                content: '✅ Outline ready!\n\n**Step 3/4:** Expanding sections with content...',
+                timestamp: new Date(),
+              }]);
+
+              // Expand all sections sequentially
+              const currentSections = doc.sections;
+              for (const section of currentSections) {
+                if (!section.content) {
+                  await expandSection(section.id);
+                }
+              }
+
+              setChatMessages(prev => [...prev, {
+                id: `system-${Date.now()}`,
+                role: 'assistant',
+                content: '✅ Content generated!\n\n**Step 4/4:** Building your presentation slides...',
+                timestamp: new Date(),
+              }]);
+
+              // Generate the final slides
+              onGenerateSlides(doc);
+            })();
             break;
         }
 
@@ -336,14 +736,14 @@ Be concise, practical, and focused on high-yield medical education. Always be he
   // Research the topic across selected sources
   const researchTopic = async () => {
     if (!doc.topic.trim() || selectedSources.length === 0) return;
-    
+
     setIsResearching(true);
     setGlobalResearch([]);
-    
+
     const promises = selectedSources.map(async (source) => {
       try {
         let result: ResearchResult;
-        
+
         switch (source) {
           case 'uptodate': {
             const res = await searchUpToDate(doc.topic);
@@ -391,13 +791,13 @@ Be concise, practical, and focused on high-yield medical education. Always be he
           default:
             throw new Error('Unknown source');
         }
-        
+
         return result!;
       } catch (error) {
         return { source, content: '', keyPoints: [], citations: [], error: String(error) } as ResearchResult;
       }
     });
-    
+
     const allResults = await Promise.all(promises);
     setGlobalResearch(allResults.filter(r => !r.error && r.content));
     setIsResearching(false);
@@ -406,13 +806,13 @@ Be concise, practical, and focused on high-yield medical education. Always be he
   // Generate outline using AI + research context
   const generateOutline = async () => {
     if (!doc.topic.trim()) return;
-    
+
     setIsGeneratingOutline(true);
     try {
-      const researchContext = globalResearch.length > 0 
-        ? `\n\nRESEARCH CONTEXT:\n${globalResearch.map(r => 
-            `## ${r.source.toUpperCase()}\n${r.content.slice(0, 2000)}\nKey Points: ${r.keyPoints.join(', ')}`
-          ).join('\n\n')}`
+      const researchContext = globalResearch.length > 0
+        ? `\n\nRESEARCH CONTEXT:\n${globalResearch.map(r =>
+          `## ${r.source.toUpperCase()}\n${r.content.slice(0, 2000)}\nKey Points: ${r.keyPoints.join(', ')}`
+        ).join('\n\n')}`
         : '';
 
       const prompt = `You are an expert medical educator creating a Socratic-style lecture.
@@ -436,10 +836,22 @@ Return JSON array ONLY:
 [{"title": "...", "type": "intro", "keyPoints": ["..."], "slideCount": 3}]`;
 
       const response = await generateWithProvider(currentProvider, prompt, [], {});
-      
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const outline = JSON.parse(jsonMatch[0]);
+
+      // Robust JSON parsing for outline
+      const parseOutline = (text: string) => {
+        try {
+          const match = text.match(/\[[\s\S]*\]/);
+          if (!match) return null;
+          const cleaned = match[0].replace(/```json\s*/, '').replace(/```\s*/, '').replace(/```$/, '').trim();
+          return JSON.parse(cleaned);
+        } catch (e) {
+          console.error('Outline JSON Parse Error:', e);
+          return null;
+        }
+      };
+
+      const outline = parseOutline(response);
+      if (outline && Array.isArray(outline)) {
         const sections: Section[] = outline.map((s: any, i: number) => ({
           id: `section-${Date.now()}-${i}`,
           title: s.title,
@@ -453,7 +865,7 @@ Return JSON array ONLY:
         }));
 
         setDoc(prev => ({ ...prev, sections }));
-        
+
         if (sections.length > 0) {
           generateSocraticQuestions(sections[0].id, sections);
         }
@@ -474,7 +886,7 @@ Return JSON array ONLY:
     setGeneratingQuestionsFor(sectionId);
     try {
       const nextSections = sections.slice(sectionIndex + 1);
-      
+
       const prompt = `You are a master clinical educator using Socratic questioning.
 
 CURRENT SECTION: "${section.title}"
@@ -497,7 +909,7 @@ For each:
 Return JSON array ONLY.`;
 
       const response = await generateWithProvider(currentProvider, prompt, [], {});
-      
+
       const jsonMatch = response.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         const questions = JSON.parse(jsonMatch[0]);
@@ -551,15 +963,15 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
         sections: prev.sections.map(s =>
           s.id === sectionId
             ? {
-                ...s,
-                content: response.trim(),
-                research: [{
-                  source: 'perplexity' as ResearchSource,
-                  content: sectionResearch.summary,
-                  keyPoints: sectionResearch.keyPoints,
-                  citations: sectionResearch.citations,
-                }],
-              }
+              ...s,
+              content: response.trim(),
+              research: [{
+                source: 'perplexity' as ResearchSource,
+                content: sectionResearch.summary,
+                keyPoints: sectionResearch.keyPoints,
+                citations: sectionResearch.citations,
+              }],
+            }
             : s
         ),
       }));
@@ -615,7 +1027,29 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
   const sectionsWithContent = doc.sections.filter(s => s.content).length;
 
   return (
-    <div className="flex-1 flex flex-col bg-zinc-950 overflow-hidden">
+    <div
+      className="flex-1 flex flex-col bg-zinc-950 overflow-hidden relative"
+      onMouseMove={handleMouseMove}
+    >
+      {/* Collaborative Cursors Overlay */}
+      {showCollaborators && (
+        <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
+          {Object.values(cursors).map(cursor => (
+            <div
+              key={cursor.userId}
+              className="absolute transition-all duration-100 ease-in-out flex items-center gap-1"
+              style={{ left: `${cursor.x}%`, top: `${cursor.y}%` }}
+            >
+              <CursorArrowRaysIcon className="w-5 h-5 -rotate-90" style={{ color: cursor.color }} />
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full text-white bg-zinc-900/80 backdrop-blur"
+                style={{ border: `1px solid ${cursor.color}` }}>
+                {cursor.userName}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex-shrink-0 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-xl">
         <div className="flex items-center justify-between px-6 py-4">
@@ -636,11 +1070,10 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                 <button
                   key={p.id}
                   onClick={() => onProviderChange(p.id)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
-                    currentProvider === p.id
-                      ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white'
-                      : 'text-zinc-400 hover:text-white'
-                  }`}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${currentProvider === p.id
+                    ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white'
+                    : 'text-zinc-400 hover:text-white'
+                    }`}
                 >
                   <span>{p.icon}</span>
                   <span className="hidden sm:inline">{p.name}</span>
@@ -648,12 +1081,61 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
               ))}
             </div>
 
-            {doc.sections.length > 0 && (
-              <div className="text-sm text-zinc-500 hidden md:block">
-                {sectionsWithContent}/{doc.sections.length} sections • {totalSlides} slides
+            {/* Collaborators Toggle */}
+            <div className="relative">
+              <button
+                onClick={() => setShowCollaborators(!showCollaborators)}
+                className={`p-2 rounded-lg hover:bg-zinc-800 transition-all ${
+                  connectionError ? 'text-red-400' :
+                  isConnecting ? 'text-yellow-400' :
+                  isConnected ? 'text-green-400' :
+                  showCollaborators ? 'text-purple-400' : 'text-zinc-400'
+                } relative`}
+                title={connectionError || (isConnecting ? 'Connecting...' : isConnected ? 'Connected' : 'Toggle Collaborators')}
+              >
+                <CursorArrowRaysIcon className={`w-5 h-5 ${isConnecting ? 'animate-pulse' : ''}`} />
+                {activeUsers.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                    {activeUsers.length}
+                  </span>
+                )}
+              </button>
+              {/* Connection status tooltip */}
+              {showCollaborators && connectionError && (
+                <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-red-900/90 border border-red-700 rounded-lg text-xs text-red-200 shadow-xl z-50">
+                  <div className="font-medium mb-1">Connection unavailable</div>
+                  <div className="text-red-300/80">{connectionError}</div>
+                </div>
+              )}
+            </div>
+
+            {/* AI Suggestions Toggle */}
+            <button
+              onClick={() => setShowSuggestions(!showSuggestions)}
+              className={`p-2 rounded-lg hover:bg-zinc-800 transition-all ${aiSuggestions.length > 0 ? 'text-cyan-400' : 'text-zinc-400'} relative`}
+              title="AI Suggestions"
+            >
+              <SparklesIcon className="w-5 h-5" />
+              {aiSuggestions.length > 0 && !showSuggestions && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
+                  {aiSuggestions.length}
+                </span>
+              )}
+            </button>
+
+            {/* Progress Bar */}
+            <div className="flex items-center gap-2">
+              <div className="w-24 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 transition-all duration-500"
+                  style={{ width: `${getProgress()}%` }}
+                />
               </div>
-            )}
-            
+              <span className="text-xs text-zinc-400 w-8">{getProgress()}%</span>
+            </div>
+
+            <div className="h-6 w-px bg-zinc-800" />
+
             <button
               onClick={() => onGenerateSlides(doc)}
               disabled={doc.sections.length === 0}
@@ -673,14 +1155,65 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
           </div>
         </div>
 
+        {/* Visual Timeline */}
+        {doc.sections.length > 0 && (
+          <div className="border-t border-zinc-800 bg-zinc-900/30 px-6 py-3">
+            <div className="flex items-center gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-zinc-800">
+              {getTimelineNodes().map((node, i) => (
+                <div key={node.sectionId} className="flex items-center gap-2 flex-shrink-0">
+                  <div
+                    className={`
+                      w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold cursor-pointer
+                      transition-all transform hover:scale-105 ${node.completed
+                        ? 'bg-gradient-to-br from-cyan-500 to-green-500 text-white shadow-lg shadow-cyan-500/20'
+                        : node.active
+                          ? 'bg-gradient-to-br from-purple-500 to-pink-500 text-white ring-2 ring-purple-400/50 shadow-lg shadow-purple-500/20'
+                          : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                      }
+                    `}
+                    title={node.title}
+                    onClick={() => {
+                      setActiveSectionId(node.sectionId);
+                      toggleSection(node.sectionId);
+                    }}
+                  >
+                    {SECTION_ICONS[node.type]}
+                  </div>
+                  {i < doc.sections.length - 1 && (
+                    <div className={`w-12 h-0.5 rounded-full ${node.completed ? 'bg-cyan-500/50' : 'bg-zinc-800'
+                      }`} />
+                  )}
+                </div>
+              ))}
+              <button
+                onClick={() => {
+                  const newSection: Section = {
+                    id: `section-${Date.now()}`,
+                    title: 'New Section',
+                    type: 'concept',
+                    content: '',
+                    keyPoints: [],
+                    slideCount: 4,
+                    isExpanded: true,
+                    followUpQuestions: [],
+                  };
+                  setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
+                }}
+                className="w-8 h-8 rounded-full border border-dashed border-zinc-600 flex items-center justify-center text-zinc-500 hover:border-cyan-500 hover:text-cyan-500 transition-colors"
+              >
+                <PlusIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Settings Panel */}
         {showSettings && (
           <div className="px-6 pb-4 border-t border-zinc-800 pt-4 bg-zinc-900/50">
             <div className="flex items-center justify-between">
               <div className="text-xs font-medium text-zinc-400">Scraper Service</div>
-              <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
-                scraperStatus ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-              }`}>
+              <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${scraperStatus ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                }`}>
                 {scraperStatus ? '● Online' : '○ Offline'}
               </div>
             </div>
@@ -688,22 +1221,20 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
               <button
                 onClick={() => handleLogin('uptodate')}
                 disabled={isLoggingIn || !scraperStatus}
-                className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${
-                  scraperStatus?.uptodate_logged_in
-                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                    : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                }`}
+                className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${scraperStatus?.uptodate_logged_in
+                  ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                  : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                  }`}
               >
                 📚 {scraperStatus?.uptodate_logged_in ? 'UpToDate ✓' : 'Login UpToDate'}
               </button>
               <button
                 onClick={() => handleLogin('mksap')}
                 disabled={isLoggingIn || !scraperStatus}
-                className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${
-                  scraperStatus?.mksap_logged_in
-                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                    : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                }`}
+                className={`px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${scraperStatus?.mksap_logged_in
+                  ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                  : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                  }`}
               >
                 🩺 {scraperStatus?.mksap_logged_in ? 'MKSAP ✓' : 'Login MKSAP'}
               </button>
@@ -713,146 +1244,201 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
       </div>
 
       {/* Main Content - 3 Column Layout */}
-      <div className="flex-1 overflow-hidden flex">
-        {/* Left Panel - Setup & Research */}
-        <div className={`${leftPanelCollapsed ? 'w-0 overflow-hidden' : 'w-72'} transition-all duration-300 flex-shrink-0 relative`}>
-          <div className={`h-full w-72 border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${leftPanelCollapsed ? 'invisible' : 'visible'}`}>
-          <div className="p-4 space-y-4 overflow-y-auto flex-1">
-            {/* Topic */}
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5">Lecture Topic</label>
-              <input
-                type="text"
-                value={doc.topic}
-                onChange={(e) => setDoc(prev => ({ ...prev, topic: e.target.value }))}
-                placeholder="e.g., Hypertensive Emergency"
-                className="w-full px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm
-                           placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-
-            {/* Audience & Duration */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">Audience</label>
-                <select
-                  value={doc.targetAudience}
-                  onChange={(e) => setDoc(prev => ({ ...prev, targetAudience: e.target.value }))}
-                  className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs"
-                >
-                  {AUDIENCES.map(a => (
-                    <option key={a.id} value={a.id}>{a.label}</option>
-                  ))}
-                </select>
+      <div className="flex-1 overflow-hidden flex relative">
+        {/* AI Suggestions Panel (Floating) */}
+        {showSuggestions && aiSuggestions.length > 0 && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 w-96 bg-zinc-900/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-4">
+            <div className="p-3 border-b border-zinc-800 flex items-center justify-between bg-gradient-to-r from-cyan-900/20 to-purple-900/20">
+              <div className="flex items-center gap-2">
+                <SparklesIcon className="w-4 h-4 text-cyan-400" />
+                <span className="text-sm font-bold text-white">AI Suggestions</span>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">Duration</label>
-                <select
-                  value={doc.duration}
-                  onChange={(e) => setDoc(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
-                  className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs"
-                >
-                  <option value={15}>15 min</option>
-                  <option value={30}>30 min</option>
-                  <option value={45}>45 min</option>
-                  <option value={60}>1 hour</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Research Sources */}
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-2">Sources</label>
-              <div className="flex flex-wrap gap-1.5">
-                {RESEARCH_SOURCES.map(source => {
-                  const isSelected = selectedSources.includes(source.id);
-                  return (
-                    <button
-                      key={source.id}
-                      onClick={() => toggleSource(source.id)}
-                      className={`px-2 py-1 rounded text-xs flex items-center gap-1 transition-all ${
-                        isSelected
-                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
-                          : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
-                      }`}
-                    >
-                      <span>{source.icon}</span>
-                      <span>{source.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="space-y-2">
-              <button
-                onClick={researchTopic}
-                disabled={!doc.topic.trim() || isResearching || selectedSources.length === 0}
-                className="w-full py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 rounded-lg
-                           text-xs font-medium text-cyan-400 flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {isResearching ? (
-                  <><ArrowPathIcon className="w-3 h-3 animate-spin" /> Researching...</>
-                ) : (
-                  <><MagnifyingGlassIcon className="w-3 h-3" /> Research</>
-                )}
-              </button>
-
-              <button
-                onClick={generateOutline}
-                disabled={!doc.topic.trim() || isGeneratingOutline}
-                className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg
-                           text-xs font-medium text-white flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {isGeneratingOutline ? (
-                  <><ArrowPathIcon className="w-3 h-3 animate-spin" /> Generating...</>
-                ) : (
-                  <><SparklesIcon className="w-3 h-3" /> Generate Outline</>
-                )}
+              <button onClick={() => setShowSuggestions(false)} className="text-zinc-500 hover:text-white">
+                <XMarkIcon className="w-4 h-4" />
               </button>
             </div>
-
-            {/* Research Results */}
-            {globalResearch.length > 0 && (
-              <div className="space-y-2">
-                <div className="text-xs font-medium text-zinc-400">Research</div>
-                {globalResearch.map(r => (
-                  <div key={r.source} className="p-2 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
-                    <div className="flex items-center gap-1.5 text-cyan-400 text-xs font-medium mb-1">
-                      {RESEARCH_SOURCES.find(s => s.id === r.source)?.icon}
-                      {RESEARCH_SOURCES.find(s => s.id === r.source)?.name}
-                    </div>
-                    <div className="text-xs text-zinc-500">{r.keyPoints.length} key points</div>
+            <div className="max-h-80 overflow-y-auto p-2 space-y-2">
+              {aiSuggestions.map(suggestion => (
+                <div key={suggestion.id} className="p-3 bg-zinc-800/50 rounded-xl hover:bg-zinc-800 transition-colors border border-zinc-700/50">
+                  <div className="flex justify-between items-start mb-1">
+                    <h4 className="text-sm font-medium text-white">{suggestion.title}</h4>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${suggestion.priority === 'high' ? 'bg-red-500/20 text-red-400' :
+                      suggestion.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-blue-500/20 text-blue-400'
+                      }`}>{suggestion.priority}</span>
                   </div>
-                ))}
-              </div>
-            )}
+                  <p className="text-xs text-zinc-400 mb-2">{suggestion.description}</p>
+                  <button
+                    onClick={() => {
+                      suggestion.action();
+                      setAiSuggestions(prev => prev.filter(s => s.id !== suggestion.id));
+                    }}
+                    className="w-full py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-lg transition-colors flex items-center justify-center gap-1"
+                  >
+                    <PlusIcon className="w-3 h-3" /> Apply Suggestion
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-            {/* Section List */}
-            {doc.sections.length > 0 && (
+        {/* Left Panel - Setup & Research (Resizable) */}
+        <div
+          className={`${leftPanelCollapsed ? 'w-0 overflow-hidden' : ''} transition-all duration-300 flex-shrink-0 relative`}
+          style={{ width: leftPanelCollapsed ? 0 : leftPanelWidth }}
+        >
+          <div
+            className={`h-full border-r border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${leftPanelCollapsed ? 'invisible' : 'visible'}`}
+            style={{ width: leftPanelWidth }}
+          >
+            {/* Resize Handle */}
+            <div
+              onMouseDown={handleLeftResizeStart}
+              className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-10 group
+                         hover:bg-cyan-500/50 transition-colors ${isResizingLeft ? 'bg-cyan-500' : 'bg-transparent'}`}
+            >
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-8 -mr-1.5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="w-1 h-6 bg-cyan-500/50 rounded-full" />
+              </div>
+            </div>
+            <div className="p-4 space-y-4 overflow-y-auto flex-1">
+              {/* Topic */}
               <div>
-                <div className="text-xs font-medium text-zinc-400 mb-2">OUTLINE</div>
-                <div className="space-y-1">
-                  {doc.sections.map((section, i) => (
-                    <button
-                      key={section.id}
-                      onClick={() => toggleSection(section.id)}
-                      className={`w-full text-left p-2 rounded-lg transition-all flex items-center gap-2 ${
-                        section.isExpanded ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
-                      }`}
-                    >
-                      <span className="text-sm">{SECTION_ICONS[section.type]}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs text-white truncate">{section.title}</div>
-                      </div>
-                      {section.content && <CheckCircleIcon className="w-3 h-3 text-green-400" />}
-                    </button>
-                  ))}
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Lecture Topic</label>
+                <input
+                  type="text"
+                  value={doc.topic}
+                  onChange={(e) => setDoc(prev => ({ ...prev, topic: e.target.value }))}
+                  placeholder="e.g., Hypertensive Emergency"
+                  className="w-full px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm
+                           placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              {/* Audience & Duration */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">Audience</label>
+                  <select
+                    value={doc.targetAudience}
+                    onChange={(e) => setDoc(prev => ({ ...prev, targetAudience: e.target.value }))}
+                    className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs"
+                  >
+                    {AUDIENCES.map(a => (
+                      <option key={a.id} value={a.id}>{a.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">Duration</label>
+                  <select
+                    value={doc.duration}
+                    onChange={(e) => setDoc(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
+                    className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs"
+                  >
+                    <option value={15}>15 min</option>
+                    <option value={30}>30 min</option>
+                    <option value={45}>45 min</option>
+                    <option value={60}>1 hour</option>
+                  </select>
                 </div>
               </div>
-            )}
-          </div>
+
+              {/* Research Sources */}
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-2">Sources</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {RESEARCH_SOURCES.map(source => {
+                    const isSelected = selectedSources.includes(source.id);
+                    return (
+                      <button
+                        key={source.id}
+                        onClick={() => toggleSource(source.id)}
+                        className={`px-2 py-1 rounded text-xs flex items-center gap-1 transition-all ${isSelected
+                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
+                          : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                          }`}
+                      >
+                        <span>{source.icon}</span>
+                        <span>{source.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-2">
+                <button
+                  onClick={researchTopic}
+                  disabled={!doc.topic.trim() || isResearching || selectedSources.length === 0}
+                  className="w-full py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 rounded-lg
+                           text-xs font-medium text-cyan-400 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isResearching ? (
+                    <><ArrowPathIcon className="w-3 h-3 animate-spin" /> Researching...</>
+                  ) : (
+                    <><MagnifyingGlassIcon className="w-3 h-3" /> Research</>
+                  )}
+                </button>
+
+                <button
+                  onClick={generateOutline}
+                  disabled={!doc.topic.trim() || isGeneratingOutline}
+                  className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg
+                           text-xs font-medium text-white flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isGeneratingOutline ? (
+                    <><ArrowPathIcon className="w-3 h-3 animate-spin" /> Generating...</>
+                  ) : (
+                    <><SparklesIcon className="w-3 h-3" /> Generate Outline</>
+                  )}
+                </button>
+              </div>
+
+              {/* Research Results */}
+              {globalResearch.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-zinc-400">Research</div>
+                  {globalResearch.map(r => (
+                    <div key={r.source} className="p-2 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
+                      <div className="flex items-center gap-1.5 text-cyan-400 text-xs font-medium mb-1">
+                        {RESEARCH_SOURCES.find(s => s.id === r.source)?.icon}
+                        {RESEARCH_SOURCES.find(s => s.id === r.source)?.name}
+                      </div>
+                      <div className="text-xs text-zinc-500">{r.keyPoints.length} key points</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Section List (Compact) */}
+              {doc.sections.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-zinc-400 mb-2">OUTLINE</div>
+                  <div className="space-y-1">
+                    {doc.sections.map((section, i) => (
+                      <button
+                        key={section.id}
+                        onClick={() => {
+                          setActiveSectionId(section.id);
+                          toggleSection(section.id);
+                        }}
+                        className={`w-full text-left p-2 rounded-lg transition-all flex items-center gap-2 ${section.isExpanded ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
+                          }`}
+                      >
+                        <span className="text-sm">{SECTION_ICONS[section.type]}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-white truncate">{section.title}</div>
+                        </div>
+                        {section.content && <CheckCircleIcon className="w-3 h-3 text-green-400" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -868,69 +1454,62 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
             <ChevronDoubleLeftIcon className="w-4 h-4 text-zinc-500 group-hover:text-cyan-400" />
           )}
         </button>
-
         {/* Center Panel - Sections Editor */}
-        <div className="flex-1 overflow-y-auto p-4 min-w-0">
+        <div className="flex-1 overflow-y-auto min-w-0 relative" onDragOver={(e) => e.preventDefault()}>
           {doc.sections.length === 0 ? (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center max-w-md">
-                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center">
-                  <LightBulbIcon className="w-8 h-8 text-cyan-400" />
-                </div>
-                <h2 className="text-xl font-bold text-white mb-2">Build Your Lecture</h2>
-                <p className="text-zinc-400 text-sm mb-4">
-                  Enter a topic on the left, or chat with the assistant on the right to get started.
-                </p>
-                <div className="grid grid-cols-2 gap-2 text-left text-xs">
-                  <div className="p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
-                    <div className="text-orange-400 font-medium">📚 UpToDate</div>
-                  </div>
-                  <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                    <div className="text-blue-400 font-medium">🩺 MKSAP 19</div>
-                  </div>
-                  <div className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
-                    <div className="text-purple-400 font-medium">🔮 Perplexity</div>
-                  </div>
-                  <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
-                    <div className="text-green-400 font-medium">📄 PubMed</div>
-                  </div>
-                </div>
-              </div>
+            <div className="h-full">
+              <Hero />
             </div>
           ) : (
-            <div className="space-y-3 max-w-3xl mx-auto">
+            <div className="space-y-3 max-w-4xl mx-auto pb-10 px-4 pt-4">
               {doc.sections.map((section, index) => (
                 <div
                   key={section.id}
-                  className={`rounded-xl border transition-all ${
-                    section.isExpanded ? 'bg-zinc-900 border-zinc-700' : 'bg-zinc-900/50 border-zinc-800'
-                  }`}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDrop={(e) => handleDrop(e, index)}
+                  className={`rounded-xl border transition-all duration-300 ${section.isExpanded ? 'bg-zinc-900 border-zinc-700 shadow-xl' : 'bg-zinc-900/50 border-zinc-800'
+                    } ${dragOverIndex === index ? 'border-t-2 border-t-cyan-500 mt-4' : ''} ${draggedItem?.id === section.id ? 'opacity-50' : ''}`}
                 >
                   {/* Section Header */}
                   <div
-                    className="p-3 flex items-center gap-3 cursor-pointer"
-                    onClick={() => toggleSection(section.id)}
+                    className="p-3 flex items-center gap-3 cursor-pointer group"
                   >
-                    <span className="text-xl">{SECTION_ICONS[section.type]}</span>
-                    <div className="flex-1">
-                      <div className="text-xs text-zinc-500">Section {index + 1}</div>
-                      <div className="text-base font-medium text-white">{section.title}</div>
+                    <div
+                      className="cursor-move text-zinc-600 group-hover:text-zinc-400"
+                      title="Drag to reorder"
+                    >
+                      <ArrowsUpDownIcon className="w-4 h-4" />
                     </div>
-                    <span className="text-xs text-zinc-500">{section.slideCount} slides</span>
-                    {section.isExpanded ? (
-                      <ChevronDownIcon className="w-4 h-4 text-zinc-500" />
-                    ) : (
-                      <ChevronRightIcon className="w-4 h-4 text-zinc-500" />
-                    )}
+
+                    <div className="flex-1 flex items-center gap-3" onClick={() => toggleSection(section.id)}>
+                      <span className="text-xl">{SECTION_ICONS[section.type]}</span>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-zinc-500">Section {index + 1}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 rounded-full text-zinc-400 uppercase">{section.type}</span>
+                        </div>
+                        <div className="text-base font-medium text-white">{section.title}</div>
+                      </div>
+                      <span className="text-xs text-zinc-500 flex items-center gap-1">
+                        <CubeIcon className="w-3 h-3" /> {section.slideCount}
+                      </span>
+                      {section.isExpanded ? (
+                        <ChevronDownIcon className="w-4 h-4 text-zinc-500" />
+                      ) : (
+                        <ChevronRightIcon className="w-4 h-4 text-zinc-500" />
+                      )}
+                    </div>
                   </div>
 
                   {/* Expanded Content */}
                   {section.isExpanded && (
                     <div className="px-3 pb-3 space-y-3">
                       {/* Key Points */}
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1.5 pl-7">
                         {section.keyPoints.map((point, i) => (
-                          <span key={i} className="px-2 py-0.5 bg-zinc-800 rounded text-xs text-zinc-300">
+                          <span key={i} className="px-2 py-0.5 bg-zinc-800 rounded text-xs text-zinc-300 border border-zinc-700">
                             {point}
                           </span>
                         ))}
@@ -938,28 +1517,32 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
 
                       {/* Content */}
                       {section.content ? (
-                        <div className="p-3 bg-zinc-800/50 rounded-lg">
-                          <p className="text-sm text-zinc-300 whitespace-pre-wrap">{section.content}</p>
+                        <div className="pl-7">
+                          <div className="p-4 bg-zinc-800/50 rounded-lg border border-zinc-700/50">
+                            <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{section.content}</p>
+                          </div>
                         </div>
                       ) : (
                         <button
                           onClick={() => expandSection(section.id)}
                           disabled={expandingSection === section.id}
-                          className="w-full py-2 border border-dashed border-zinc-700 rounded-lg text-zinc-500 text-sm
-                                     hover:border-purple-500/50 hover:text-purple-400 flex items-center justify-center gap-2"
+                          className="w-full ml-7 py-3 border border-dashed border-zinc-700 rounded-lg text-zinc-500 text-sm
+                                     hover:border-purple-500/50 hover:text-purple-400 flex items-center justify-center gap-2 transition-all bg-zinc-800/20"
                         >
                           {expandingSection === section.id ? (
-                            <><ArrowPathIcon className="w-3 h-3 animate-spin" /> Writing...</>
+                            <><ArrowPathIcon className="w-4 h-4 animate-spin" /> Writing content...</>
                           ) : (
-                            <><SparklesIcon className="w-3 h-3" /> Expand</>
+                            <><SparklesIcon className="w-4 h-4" /> Expand with AI</>
                           )}
                         </button>
                       )}
 
                       {/* Socratic Questions */}
                       {section.followUpQuestions.length > 0 && (
-                        <div className="pt-3 border-t border-zinc-800">
-                          <div className="text-xs text-zinc-400 mb-2">Follow-up Questions</div>
+                        <div className="pt-3 border-t border-zinc-800 pl-7">
+                          <div className="text-xs text-zinc-400 mb-2 flex items-center gap-1">
+                            <QuestionMarkCircleIcon className="w-3 h-3" /> Socratic Questions
+                          </div>
                           <div className="space-y-1.5">
                             {section.followUpQuestions.slice(0, 3).map((q) => {
                               const style = QUESTION_STYLES[q.type];
@@ -968,14 +1551,16 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                                 <button
                                   key={q.id}
                                   onClick={() => selectQuestion(section.id, q)}
-                                  className={`w-full text-left p-2 rounded-lg text-xs transition-all ${
-                                    isSelected
-                                      ? 'bg-purple-500/20 border border-purple-500/50'
-                                      : 'bg-zinc-800/50 hover:bg-zinc-800'
-                                  }`}
+                                  className={`w-full text-left p-2.5 rounded-lg text-xs transition-all flex items-start gap-2 ${isSelected
+                                    ? 'bg-purple-500/20 border border-purple-500/50 ring-1 ring-purple-500/20'
+                                    : 'bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800'
+                                    }`}
                                 >
-                                  <span className="mr-1">{style.icon}</span>
-                                  {q.question}
+                                  <span className="text-base mt-0.5">{style.icon}</span>
+                                  <div>
+                                    <div className="font-medium text-zinc-200">{q.question}</div>
+                                    <div className="text-[10px] text-zinc-500 mt-0.5">{q.insight}</div>
+                                  </div>
                                 </button>
                               );
                             })}
@@ -984,24 +1569,24 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                       )}
 
                       {/* Actions */}
-                      <div className="flex justify-between items-center">
+                      <div className="flex justify-between items-center pl-7 pt-1">
                         <button
                           onClick={() => generateSocraticQuestions(section.id)}
                           disabled={generatingQuestionsFor === section.id}
-                          className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                          className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 px-2 py-1 rounded hover:bg-purple-500/10"
                         >
                           {generatingQuestionsFor === section.id ? (
                             <ArrowPathIcon className="w-3 h-3 animate-spin" />
                           ) : (
-                            <QuestionMarkCircleIcon className="w-3 h-3" />
+                            <ArrowPathIcon className="w-3 h-3" />
                           )}
-                          Questions
+                          Regenerate Questions
                         </button>
                         <button
                           onClick={() => removeSection(section.id)}
-                          className="text-xs text-zinc-500 hover:text-red-400 flex items-center gap-1"
+                          className="text-xs text-zinc-500 hover:text-red-400 flex items-center gap-1 px-2 py-1 rounded hover:bg-red-500/10"
                         >
-                          <TrashIcon className="w-3 h-3" />
+                          <TrashIcon className="w-3 h-3" /> Remove Section
                         </button>
                       </div>
                     </div>
@@ -1024,10 +1609,10 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                   };
                   setDoc(prev => ({ ...prev, sections: [...prev.sections, newSection] }));
                 }}
-                className="w-full py-3 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-sm
-                           hover:border-cyan-500/50 hover:text-cyan-400 flex items-center justify-center gap-2"
+                className="w-full py-4 border border-dashed border-zinc-700 rounded-xl text-zinc-500 text-sm
+                           hover:border-cyan-500/50 hover:text-cyan-400 flex items-center justify-center gap-2 transition-all hover:bg-zinc-900"
               >
-                <PlusIcon className="w-4 h-4" /> Add Section
+                <PlusIcon className="w-5 h-5" /> Add Section
               </button>
             </div>
           )}
@@ -1046,95 +1631,187 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
           )}
         </button>
 
-        {/* Right Panel - Chat Assistant */}
-        <div className={`${rightPanelCollapsed ? 'w-0 overflow-hidden' : 'w-80'} transition-all duration-300 flex-shrink-0`}>
-          <div className={`h-full w-80 border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${rightPanelCollapsed ? 'invisible' : 'visible'}`}>
-          {/* Chat Header */}
-          <div className="flex-shrink-0 p-3 border-b border-zinc-800">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg">
-                <ChatBubbleLeftRightIcon className="w-4 h-4 text-purple-400" />
-              </div>
-              <div>
-                <div className="text-sm font-medium text-white">Lecture Assistant</div>
-                <div className="text-xs text-zinc-500">Ask me anything</div>
+        {/* Right Panel - Enhanced Chat Assistant (Resizable) */}
+        <div
+          className={`${rightPanelCollapsed ? 'w-0 overflow-hidden' : ''} transition-all duration-300 flex-shrink-0 relative`}
+          style={{ width: rightPanelCollapsed ? 0 : rightPanelWidth }}
+        >
+          <div
+            className={`h-full border-l border-zinc-800 bg-zinc-900/50 flex flex-col overflow-hidden ${rightPanelCollapsed ? 'invisible' : 'visible'}`}
+            style={{ width: rightPanelWidth }}
+          >
+            {/* Resize Handle */}
+            <div
+              onMouseDown={handleRightResizeStart}
+              className={`absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 group
+                         hover:bg-purple-500/50 transition-colors ${isResizingRight ? 'bg-purple-500' : 'bg-transparent'}`}
+            >
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-8 -ml-1.5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="w-1 h-6 bg-purple-500/50 rounded-full" />
               </div>
             </div>
-          </div>
 
-          {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {chatMessages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[90%] p-2.5 rounded-xl text-sm ${
-                    msg.role === 'user'
-                      ? 'bg-cyan-500/20 text-cyan-100'
-                      : 'bg-zinc-800 text-zinc-300'
-                  }`}
-                >
-                  {msg.content}
-                  {msg.action && (
-                    <div className="mt-1.5 pt-1.5 border-t border-zinc-700/50">
-                      <span className="text-xs text-purple-400">✓ Action: {msg.action}</span>
-                    </div>
-                  )}
-                </div>
+            {/* Enhanced Chat Header with Status Indicator */}
+            <div className="flex-shrink-0 p-3 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm">
+              <div className="flex items-center justify-between">
+                <AssistantStatus
+                  status={isChatProcessing ? 'thinking' : isResearching ? 'researching' : isGeneratingOutline ? 'generating' : 'ready'}
+                  mood={doc.sections.length > 3 ? 'happy' : 'neutral'}
+                />
+                {/* Context Pill - shows current progress */}
+                <ContextPill
+                  topic={doc.topic}
+                  sectionsCount={doc.sections.length}
+                  progress={getProgress()}
+                  isResearching={isResearching}
+                  isGenerating={isGeneratingOutline}
+                />
               </div>
-            ))}
-            {isChatProcessing && (
-              <div className="flex justify-start">
-                <div className="bg-zinc-800 text-zinc-400 p-2.5 rounded-xl text-sm flex items-center gap-2">
-                  <ArrowPathIcon className="w-3 h-3 animate-spin" />
-                  Thinking...
-                </div>
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
+            </div>
 
-          {/* Quick Actions */}
-          <div className="flex-shrink-0 px-3 py-2 border-t border-zinc-800">
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK_ACTIONS.map((action, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleChatSubmit(action.prompt)}
+            {/* Chat Messages Area */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Show conversation starters when no user messages yet */}
+              {chatMessages.length <= 1 && (
+                <ConversationStarters
+                  suggestions={[
+                    { icon: '❤️', label: 'Build a presentation on heart failure', prompt: 'Help me build a presentation on heart failure' },
+                    { icon: '🧠', label: 'Create a lecture on stroke management', prompt: 'Create a lecture on acute stroke management for residents' },
+                    { icon: '💉', label: 'Teach me about diabetic ketoacidosis', prompt: 'I need a 30-minute talk on DKA for medical students' },
+                    { icon: '🫁', label: 'Explain COPD exacerbation', prompt: 'Help me teach COPD exacerbation management' },
+                  ]}
+                  onSelect={handleChatSubmit}
                   disabled={isChatProcessing}
-                  className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-xs text-zinc-400 hover:text-white transition-all"
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          </div>
+                />
+              )}
 
-          {/* Chat Input */}
-          <div className="flex-shrink-0 p-3 border-t border-zinc-800">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleChatSubmit()}
-                placeholder="Ask or instruct..."
-                disabled={isChatProcessing}
-                className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm
-                           placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500 disabled:opacity-50"
-              />
-              <button
-                onClick={() => handleChatSubmit()}
-                disabled={!chatInput.trim() || isChatProcessing}
-                className="p-2 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-lg text-white
-                           disabled:opacity-50 hover:shadow-lg transition-all"
-              >
-                <PaperAirplaneIcon className="w-4 h-4" />
-              </button>
+              {/* Messages with enhanced features */}
+              {chatMessages.map((msg, idx) => (
+                <ChatMessage
+                  key={msg.id}
+                  content={msg.content}
+                  role={msg.role}
+                  action={msg.action}
+                  timestamp={msg.timestamp}
+                  showTimestamp={true}
+                  isLatest={idx === chatMessages.length - 1 && msg.role === 'assistant'}
+                  onReaction={(reaction) => {
+                    console.log(`Message ${msg.id} rated: ${reaction}`);
+                    // Could save to analytics here
+                  }}
+                />
+              ))}
+
+              {/* Enhanced Typing Indicator */}
+              {isChatProcessing && (
+                <TypingIndicator assistantName="Lecture Assistant" />
+              )}
+
+              <div ref={chatEndRef} />
             </div>
-          </div>
+
+            {/* Enhanced Quick Actions - Categorized */}
+            <div className="flex-shrink-0 px-3 py-2 border-t border-zinc-800 bg-zinc-900/60">
+              <div className="flex items-center gap-2 mb-2">
+                <SparklesIcon className="w-3 h-3 text-purple-400" />
+                <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Quick Actions</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_ACTIONS.map((action, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleChatSubmit(action.prompt)}
+                    disabled={isChatProcessing}
+                    className="group px-2.5 py-1.5 bg-zinc-800/80 hover:bg-purple-500/20 rounded-lg text-xs text-zinc-400
+                             hover:text-purple-300 transition-all border border-transparent hover:border-purple-500/30
+                             disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                  >
+                    <span className="opacity-60 group-hover:opacity-100 transition-opacity">
+                      {i === 0 ? '💡' : i === 1 ? '📋' : i === 2 ? '📈' : '❓'}
+                    </span>
+                    {action.label}
+                  </button>
+                ))}
+                {/* Full Build button */}
+                <button
+                  onClick={() => handleChatSubmit('Build the complete presentation now')}
+                  disabled={isChatProcessing || !doc.topic}
+                  className="px-2.5 py-1.5 bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30
+                           rounded-lg text-xs text-purple-300 transition-all border border-purple-500/30
+                           disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  <span>🚀</span>
+                  Full Build
+                </button>
+              </div>
+            </div>
+
+            {/* Enhanced Chat Input with Voice */}
+            <div className="flex-shrink-0 p-4 border-t border-zinc-800 bg-zinc-900/80 backdrop-blur-sm space-y-3">
+              <div className="flex gap-2 items-end">
+                {/* Voice Input Button */}
+                <button
+                  onClick={() => {
+                    // Voice input - would integrate with Web Speech API
+                    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                      const recognition = new SpeechRecognition();
+                      recognition.continuous = false;
+                      recognition.interimResults = false;
+                      recognition.lang = 'en-US';
+                      recognition.onresult = (event: any) => {
+                        const transcript = event.results[0][0].transcript;
+                        setChatInput(prev => prev + transcript);
+                      };
+                      recognition.start();
+                    } else {
+                      alert('Voice input not supported in this browser');
+                    }
+                  }}
+                  className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 hover:text-white
+                           transition-all border border-zinc-700 hover:border-purple-500/30"
+                  title="Voice input (click to speak)"
+                >
+                  <MicrophoneIcon className="w-5 h-5" />
+                </button>
+
+                {/* Text Input */}
+                <div className="flex-1 bg-zinc-800 rounded-xl border border-zinc-700 focus-within:border-cyan-500/50 focus-within:ring-2 focus-within:ring-cyan-500/20 transition-all">
+                  <TextareaAutosize
+                    minRows={1}
+                    maxRows={6}
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleChatSubmit();
+                      }
+                    }}
+                    placeholder="Describe your presentation idea..."
+                    disabled={isChatProcessing}
+                    className="w-full px-4 py-3 bg-transparent text-white text-sm placeholder:text-zinc-500 focus:outline-none resize-none"
+                  />
+                </div>
+
+                {/* Send Button */}
+                <button
+                  onClick={() => handleChatSubmit()}
+                  disabled={!chatInput.trim() || isChatProcessing}
+                  className="p-3 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl text-white shadow-lg shadow-cyan-500/20
+                           disabled:opacity-50 disabled:shadow-none hover:shadow-cyan-500/40 hover:scale-105 transition-all active:scale-95"
+                >
+                  {isChatProcessing ? (
+                    <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <PaperAirplaneIcon className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
+
+              {/* Keyboard Shortcuts Hint */}
+              <KeyboardHint show={!isChatProcessing} />
+            </div>
           </div>
         </div>
       </div>

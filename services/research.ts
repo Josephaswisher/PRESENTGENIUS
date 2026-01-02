@@ -10,7 +10,18 @@
  * - MKSAP 19 (requires login credentials)
  */
 
-const SCRAPER_BASE_URL = 'http://localhost:8765';
+// Use environment variable for scraper URL - required for mobile/production
+// Falls back to localhost only for local development
+const SCRAPER_BASE_URL = import.meta.env.VITE_SCRAPER_URL ||
+  (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+    ? '' // Disable scraper on production/mobile if no URL configured
+    : 'http://localhost:8765');
+
+// Check if scraper is configured for this environment
+export const isScraperConfigured = (): boolean => {
+  return !!import.meta.env.VITE_SCRAPER_URL ||
+    (typeof window !== 'undefined' && window.location.hostname === 'localhost');
+};
 
 export interface Citation {
   id: string;

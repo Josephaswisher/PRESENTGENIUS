@@ -2,189 +2,75 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import React, { useEffect, useState } from 'react';
-import { BeakerIcon, ClipboardDocumentListIcon, HeartIcon, BookOpenIcon } from '@heroicons/react/24/outline';
-import { AcademicCapIcon, BoltIcon, PresentationChartBarIcon } from '@heroicons/react/24/solid';
+import React from 'react';
+import { SparklesIcon } from '@heroicons/react/24/outline';
+import { AcademicCapIcon, BoltIcon } from '@heroicons/react/24/solid';
 
-// Component that simulates drawing a wireframe then filling it with life
-const DrawingTransformation = ({ 
-  initialIcon: InitialIcon, 
-  finalIcon: FinalIcon, 
-  label,
-  delay, 
-  x, 
-  y,
-  rotation = 0
-}: { 
-  initialIcon: React.ElementType, 
-  finalIcon: React.ElementType, 
-  label: string,
-  delay: number,
-  x: string,
-  y: string,
-  rotation?: number
-}) => {
-  const [stage, setStage] = useState(0); // 0: Hidden, 1: Drawing, 2: Alive
-
-  useEffect(() => {
-    const cycle = () => {
-      setStage(0);
-      setTimeout(() => setStage(1), 500); // Start drawing
-      setTimeout(() => setStage(2), 3500); // Come alive
-    };
-
-    // Initial delay
-    const startTimeout = setTimeout(() => {
-      cycle();
-      // Repeat cycle
-      const interval = setInterval(cycle, 9000);
-      return () => clearInterval(interval);
-    }, delay);
-
-    return () => clearTimeout(startTimeout);
-  }, [delay]);
-
+export const Hero: React.FC = () => {
   return (
-    <div 
-      className="absolute transition-all duration-1000 ease-in-out z-0 pointer-events-none"
-      style={{ top: y, left: x, transform: `rotate(${rotation}deg)` }}
-    >
-      <div className={`relative w-20 h-28 md:w-28 md:h-40 rounded-lg backdrop-blur-md transition-all duration-1000 ${stage === 2 ? 'bg-cyan-900/40 border-cyan-500/50 shadow-xl scale-110 -translate-y-4' : 'bg-zinc-900/10 border-zinc-800 scale-100 border border-dashed'}`}>
-        
-        {/* Label tag that appears in stage 2 */}
-        <div className={`absolute -top-3 left-1/2 -translate-x-1/2 bg-cyan-100 text-cyan-900 border border-cyan-200 text-[8px] md:text-[10px] font-mono font-bold px-2 py-0.5 rounded-sm transition-all duration-500 ${stage === 2 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
-            {label}
+    <div className="relative min-h-screen flex flex-col items-center justify-center pt-20 pb-32">
+      {/* Hero Text Content */}
+      <div className="text-center relative z-10 max-w-5xl mx-auto px-6">
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-morphism mb-8 animate-in fade-in slide-in-from-top-4 duration-1000">
+          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+          <span className="text-cyan-400/90 font-bold text-xs tracking-widest uppercase">PresentsGenius Elite</span>
+          <span className="text-white/20">|</span>
+          <span className="text-zinc-400 text-xs">Medical OS</span>
         </div>
 
-        {/* Content Container */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          
-          {/* Stage 1: Wireframe Drawing Effect */}
-          <div className={`absolute transition-all duration-1000 ${stage === 1 ? 'opacity-100' : 'opacity-0'}`}>
-             <InitialIcon className="w-8 h-8 md:w-12 md:h-12 text-zinc-500 stroke-1" />
-             {/* Technical corner markers instead of dash drawing */}
-             <div className="absolute -inset-2 border border-zinc-700/30 opacity-50"></div>
-             <div className="absolute top-0 left-0 w-2 h-2 border-l border-t border-zinc-500"></div>
-             <div className="absolute top-0 right-0 w-2 h-2 border-r border-t border-zinc-500"></div>
-             <div className="absolute bottom-0 left-0 w-2 h-2 border-l border-b border-zinc-500"></div>
-             <div className="absolute bottom-0 right-0 w-2 h-2 border-r border-b border-zinc-500"></div>
+        <h1 className="text-5xl md:text-8xl font-black tracking-tighter text-white mb-8 leading-[0.9] animate-reveal">
+          Medical Learning <br />
+          <span className="text-transparent bg-clip-text bg-gradient-to-br from-white via-cyan-200 to-cyan-500 drop-shadow-[0_0_30px_rgba(34,211,238,0.3)]">
+            Elevated
+          </span>.
+        </h1>
+
+        <p className="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto mb-16 leading-relaxed font-medium animate-reveal animate-stagger-1">
+          The world's first medical workspace powered by <span className="text-cyan-400">Gemini 2.5</span> and <span className="text-purple-400">Claude Opus 4</span>.
+          Turn clinical chaos into teaching pearls in seconds.
+        </p>
+
+        {/* Bento Feature Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+          <div className="md:col-span-2 glass-morphism p-6 rounded-3xl text-left border-cyan-500/20 hover:border-cyan-500/40 transition-all group animate-reveal animate-stagger-2">
+            <div className="p-3 bg-cyan-500/10 rounded-2xl w-fit mb-4 group-hover:scale-110 transition-transform">
+              <SparklesIcon className="w-6 h-6 text-cyan-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Perplexity Intelligence</h3>
+            <p className="text-sm text-zinc-400">Live medical research integration from UpToDate, MKSAP, and PubMed.</p>
           </div>
 
-          {/* Stage 2: Alive/Interactive */}
-          <div className={`absolute transition-all duration-700 flex flex-col items-center ${stage === 2 ? 'opacity-100 scale-100 blur-0' : 'opacity-0 scale-75 blur-sm'}`}>
-             <FinalIcon className="w-10 h-10 md:w-14 md:h-14 text-cyan-400" />
-             {stage === 2 && (
-               <div className="mt-3 flex items-center gap-2 px-2 py-1 bg-zinc-900/80 rounded-full border border-zinc-700/50">
-                 <div className="w-1 h-1 bg-green-500 rounded-full"></div>
-                 <div className="w-8 h-0.5 bg-zinc-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-cyan-500 w-2/3 animate-[pulse_1s_infinite]"></div>
-                 </div>
-               </div>
-             )}
+          <div className="glass-morphism p-6 rounded-3xl text-left border-purple-500/10 hover:border-purple-500/30 transition-all group animate-reveal animate-stagger-3">
+            <div className="p-3 bg-purple-500/10 rounded-2xl w-fit mb-4 group-hover:scale-110 transition-transform">
+              <AcademicCapIcon className="w-6 h-6 text-purple-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Board-Level</h3>
+            <p className="text-sm text-zinc-400">Auto-generate USMLE questions.</p>
+          </div>
+
+          <div className="glass-morphism p-6 rounded-3xl text-left border-pink-500/10 hover:border-pink-500/30 transition-all group animate-reveal animate-stagger-4">
+            <div className="p-3 bg-pink-500/10 rounded-2xl w-fit mb-4 group-hover:scale-110 transition-transform">
+              <BoltIcon className="w-6 h-6 text-pink-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Case Sim</h3>
+            <p className="text-sm text-zinc-400">Interactive patient encounters.</p>
+          </div>
+
+          <div className="md:col-span-4 glass-morphism p-1 bg-gradient-to-r from-cyan-500/20 via-purple-500/20 to-pink-500/20 rounded-[2rem]">
+            <div className="bg-zinc-950/90 rounded-[1.8rem] p-6 flex flex-col md:flex-row items-center justify-between gap-6 overflow-hidden relative">
+              <div className="absolute inset-0 bg-grid-white opacity-[0.05]" />
+              <div className="relative z-10 text-left">
+                <h3 className="text-xl font-bold text-white mb-1">Unleash Your Imagination</h3>
+                <p className="text-sm text-zinc-500">Dual AI processing: Synthesis via Claude + Creativity via Gemini.</p>
+              </div>
+              <div className="relative z-10 flex gap-2">
+                <div className="px-4 py-2 bg-white text-black font-bold text-xs rounded-full cursor-pointer hover:scale-105 transition-transform">Get Started</div>
+                <div className="px-4 py-2 border border-white/10 text-white font-bold text-xs rounded-full cursor-pointer hover:bg-white/5 transition-colors">Documentation</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
-  );
-};
-
-export const Hero: React.FC = () => {
-  return (
-    <>
-      {/* Background Transformation Elements - Fixed to Viewport */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        {/* Top Left: Notes -> Presentation */}
-        <div className="hidden lg:block">
-            <DrawingTransformation 
-            initialIcon={ClipboardDocumentListIcon} 
-            finalIcon={PresentationChartBarIcon} 
-            label="CASE STUDY"
-            delay={0} 
-            x="4%" 
-            y="8%"
-            rotation={-3} 
-            />
-        </div>
-
-        {/* Bottom Right: Textbook -> Quiz */}
-        <div className="hidden md:block">
-            <DrawingTransformation 
-            initialIcon={BookOpenIcon} 
-            finalIcon={AcademicCapIcon} 
-            label="LEARNING"
-            delay={3000} 
-            x="88%" 
-            y="75%"
-            rotation={2} 
-            />
-        </div>
-
-        {/* Top Right: Lab -> Simulation */}
-        <div className="hidden lg:block">
-            <DrawingTransformation 
-            initialIcon={BeakerIcon} 
-            finalIcon={BoltIcon} 
-            label="SIMULATION"
-            delay={6000} 
-            x="88%" 
-            y="12%"
-            rotation={1} 
-            />
-        </div>
-
-        {/* Bottom Left: Heart -> Cardio App */}
-        <div className="hidden md:block">
-            <DrawingTransformation 
-            initialIcon={HeartIcon} 
-            finalIcon={HeartIcon} 
-            label="CARDIOLOGY"
-            delay={4500} 
-            x="5%" 
-            y="72%"
-            rotation={-2} 
-            />
-        </div>
-      </div>
-
-      {/* Hero Text Content */}
-      <div className="text-center relative z-10 max-w-6xl mx-auto px-4 pt-8">
-        {/* Brand Badge */}
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/20 mb-6">
-          <span className="text-cyan-400 font-semibold text-sm">PRESENTGENIUS</span>
-          <span className="text-zinc-500">•</span>
-          <span className="text-zinc-400 text-sm">By Dr. Joey Swisher</span>
-        </div>
-        
-        <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tighter text-white mb-6 leading-[1.1]">
-          Medical Education <br/>
-          <span className="underline decoration-4 decoration-cyan-500 underline-offset-4 md:underline-offset-8 text-white">Reimagined</span>.
-        </h1>
-        
-        {/* Tagline */}
-        <p className="text-xl sm:text-2xl md:text-3xl font-light text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 mb-4 italic">
-          Unleash Your Imagination
-        </p>
-        
-        <p className="text-base sm:text-xl text-zinc-400 max-w-2xl mx-auto leading-relaxed font-light">
-          Dual AI power (Gemini + Claude Opus) transforms clinical notes, textbooks, and research into interactive case studies, board-style presentations, and resident training modules instantly.
-        </p>
-        
-        {/* Feature Pills */}
-        <div className="flex flex-wrap justify-center gap-3 mt-6">
-          <span className="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-medium">
-            🔮 Perplexity Research
-          </span>
-          <span className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-medium">
-            📚 UpToDate Integration
-          </span>
-          <span className="px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-xs font-medium">
-            🩺 MKSAP 19 Content
-          </span>
-          <span className="px-3 py-1 rounded-full bg-green-500/10 border border-green-500/30 text-green-400 text-xs font-medium">
-            🔥 Dual AI Mode
-          </span>
-        </div>
-      </div>
-    </>
   );
 };
