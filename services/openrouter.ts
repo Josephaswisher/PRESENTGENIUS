@@ -36,7 +36,8 @@ export const OPENROUTER_MODELS = {
   'google/gemini-2.5-pro-preview': { name: 'Gemini 2.5 Pro', icon: '💎', tier: 'premium' },
   'google/gemma-2-27b-it': { name: 'Gemma 2 27B', icon: '💎', tier: 'standard' },
 
-  // DeepSeek
+  // DeepSeek (V3.2 is latest & cheapest: $0.28/$0.42 per 1M tokens)
+  'deepseek/deepseek-v3.2': { name: 'DeepSeek V3.2', icon: '🔵', tier: 'fast' },
   'deepseek/deepseek-r1': { name: 'DeepSeek R1', icon: '🔵', tier: 'premium' },
   'deepseek/deepseek-chat': { name: 'DeepSeek Chat', icon: '🔵', tier: 'fast' },
 
@@ -71,7 +72,7 @@ function getApiKey(): string {
  */
 export async function generateWithOpenRouter(
   prompt: string,
-  modelId: OpenRouterModelId = 'deepseek/deepseek-r1',
+  modelId: OpenRouterModelId = 'deepseek/deepseek-v3.2',
   files: FileInput[] = [],
   options: GenerationOptions = {}
 ): Promise<string> {
@@ -147,7 +148,7 @@ ${options.activityId ? `Activity type: ${options.activityId}` : ''}`;
 export async function refineWithOpenRouter(
   currentHtml: string,
   instruction: string,
-  modelId: OpenRouterModelId = 'deepseek/deepseek-r1'
+  modelId: OpenRouterModelId = 'deepseek/deepseek-v3.2'
 ): Promise<string> {
   const apiKey = getApiKey();
 
@@ -204,7 +205,7 @@ export async function bringToLife(
   files: FileInput[] = [],
   options: GenerationOptions & { model?: OpenRouterModelId } = {}
 ): Promise<string> {
-  const model = options.model || 'deepseek/deepseek-r1';
+  const model = options.model || 'deepseek/deepseek-v3.2';
   return generateWithOpenRouter(prompt, model, files, options);
 }
 
@@ -214,7 +215,7 @@ export async function bringToLife(
 export async function refineArtifact(
   currentHtml: string,
   instruction: string,
-  model: OpenRouterModelId = 'deepseek/deepseek-r1'
+  model: OpenRouterModelId = 'deepseek/deepseek-v3.2'
 ): Promise<string> {
   return refineWithOpenRouter(currentHtml, instruction, model);
 }
