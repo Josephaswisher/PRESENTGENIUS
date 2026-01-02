@@ -25,6 +25,13 @@ export {
   useDragToDismiss,
   useEdgeSwipe,
 } from './useSwipeGesture';
+export {
+  useNetworkStatus,
+  isNetworkError,
+  isRetryableError,
+  fetchWithTimeout,
+  logApiStatus,
+} from './useNetworkStatus';
 
 export type { Breakpoint } from './useMediaQuery';
 export type { SidebarId, SidebarPosition } from './useSidebar';

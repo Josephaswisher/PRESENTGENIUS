@@ -5,16 +5,23 @@
 
 const SCRAPER_BASE_URL = import.meta.env.VITE_SCRAPER_URL || 'http://localhost:8765';
 
-// Credentials (should be env vars in production)
+// Credentials - MUST be set via environment variables
+// Never hardcode credentials in source code
 const UPTODATE_CREDENTIALS = {
-  username: import.meta.env.VITE_UPTODATE_USERNAME || 'shikshasharma',
-  password: import.meta.env.VITE_UPTODATE_PASSWORD || 'Jammu145!',
+  username: import.meta.env.VITE_UPTODATE_USERNAME || '',
+  password: import.meta.env.VITE_UPTODATE_PASSWORD || '',
 };
 
 const MKSAP_CREDENTIALS = {
   username: import.meta.env.VITE_MKSAP_USERNAME || '',
   password: import.meta.env.VITE_MKSAP_PASSWORD || '',
 };
+
+// Check if credentials are configured
+export const hasUpToDateCredentials = (): boolean =>
+  !!(UPTODATE_CREDENTIALS.username && UPTODATE_CREDENTIALS.password);
+export const hasMKSAPCredentials = (): boolean =>
+  !!(MKSAP_CREDENTIALS.username && MKSAP_CREDENTIALS.password);
 
 export interface ScraperCitation {
   id: string;
