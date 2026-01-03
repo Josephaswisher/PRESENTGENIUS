@@ -163,6 +163,9 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
   // Per-slide zoom levels (persisted to localStorage)
   const [slideZoomLevels, setSlideZoomLevels] = useState<{[key: number]: number}>({});
 
+  // Content-aware backgrounds per slide
+  const [slideBackgrounds, setSlideBackgrounds] = useState<{[key: number]: string}>({});
+
   const strictSandbox = import.meta.env.VITE_STRICT_IFRAME_SANDBOX !== 'false';
   const [sandboxPermissions, setSandboxPermissions] = useState<string>(
     strictSandbox ? 'allow-scripts' : 'allow-scripts allow-same-origin'
@@ -519,6 +522,7 @@ case ' ':
         case 'S':
           // Toggle split-screen mode
           setShowSplitScreen(prev => !prev);
+          break;
         case 'r':
         case 'R':
           // Toggle progressive disclosure mode
@@ -1182,7 +1186,7 @@ case ' ':
           timestamp: Date.now()
         }, '*');
       }, false);
-    </script></body>`
+    <\/script></body>`
   );
 
   // Listen for messages from iframe (for debugging and future use)
@@ -1628,8 +1632,8 @@ case ' ':
           {/* Clear Button */}
           <button
             onClick={() => {
-              if (canvasRef.current && (canvasRef.current as any).clearCanvas) {
-                (canvasRef.current as any).clearCanvas();
+              if ((window as any).__presentationClearDrawing) {
+                (window as any).__presentationClearDrawing();
               }
             }}
             className="w-full px-3 py-2 bg-red-500/20 hover:bg-red-500/40 text-red-300 rounded-lg text-xs font-semibold transition-all"
