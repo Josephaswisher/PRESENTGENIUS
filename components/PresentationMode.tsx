@@ -520,8 +520,38 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                   overflow-x: hidden !important;
                   -webkit-overflow-scrolling: touch !important;
                   scroll-behavior: smooth !important;
-                  padding: 2rem !important;
+                  padding: clamp(1rem, 3vw, 2rem) !important;
                   transition: opacity 0.3s ease, transform 0.3s ease !important;
+
+                  /* Better scrollbar styling */
+                  scrollbar-width: thin !important;
+                  scrollbar-color: rgba(6, 182, 212, 0.5) transparent !important;
+                }
+
+                /* Webkit scrollbar styling */
+                [data-slide]::-webkit-scrollbar,
+                .slide::-webkit-scrollbar,
+                section::-webkit-scrollbar {
+                  width: 6px !important;
+                }
+
+                [data-slide]::-webkit-scrollbar-track,
+                .slide::-webkit-scrollbar-track,
+                section::-webkit-scrollbar-track {
+                  background: transparent !important;
+                }
+
+                [data-slide]::-webkit-scrollbar-thumb,
+                .slide::-webkit-scrollbar-thumb,
+                section::-webkit-scrollbar-thumb {
+                  background: rgba(6, 182, 212, 0.5) !important;
+                  border-radius: 3px !important;
+                }
+
+                [data-slide]::-webkit-scrollbar-thumb:hover,
+                .slide::-webkit-scrollbar-thumb:hover,
+                section::-webkit-scrollbar-thumb:hover {
+                  background: rgba(6, 182, 212, 0.7) !important;
                 }
 
                 /* Hidden slides */
@@ -554,6 +584,22 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                   overflow: hidden !important;
                   height: 100vh !important;
                   width: 100vw !important;
+                }
+
+                /* Scroll snap for better section navigation */
+                [data-slide], .slide, section {
+                  scroll-snap-type: y proximity !important;
+                }
+
+                h1, h2, h3, h4, hr {
+                  scroll-snap-align: start !important;
+                  scroll-margin-top: 2rem !important;
+                }
+
+                /* Ensure images and media don't overflow */
+                img, video, iframe {
+                  max-width: 100% !important;
+                  height: auto !important;
                 }
               `;
               doc.head.appendChild(style);
