@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Medical Mini-Games Demo - PresentGenius</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes confetti-fall {
+      to { transform: translateY(120vh) rotate(720deg); opacity: 0; }
+    }
+    @keyframes animate-shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-10px); }
+      75% { transform: translateX(10px); }
+    }
+    @keyframes animate-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body class="bg-slate-900">
+
+<!-- Landing Page -->
+<div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 via-purple-900 to-pink-900 p-8">
+  <div class="max-w-4xl text-center">
+    <h1 class="text-7xl font-bold text-white mb-6 animate-fade-in">Medical Mini-Games</h1>
+    <p class="text-2xl text-white/80 mb-12">Interactive drag-and-drop learning experiences</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+      <a href="#organ-game" class="bg-white/10 backdrop-blur border-2 border-blue-400/50 rounded-2xl p-8 hover:scale-105 hover:border-blue-400 transition-all shadow-2xl">
+        <div class="text-6xl mb-4">❤️</div>
+        <h3 class="text-2xl font-bold text-white mb-2">Organ Placement</h3>
+        <p class="text-white/70">Drag organs to correct anatomical positions</p>
+      </a>
+
+      <a href="#symptom-game" class="bg-white/10 backdrop-blur border-2 border-purple-400/50 rounded-2xl p-8 hover:scale-105 hover:border-purple-400 transition-all shadow-2xl">
+        <div class="text-6xl mb-4">🩺</div>
+        <h3 class="text-2xl font-bold text-white mb-2">Symptom Matching</h3>
+        <p class="text-white/70">Match symptoms to diagnoses</p>
+      </a>
+
+      <a href="#drug-game" class="bg-white/10 backdrop-blur border-2 border-teal-400/50 rounded-2xl p-8 hover:scale-105 hover:border-teal-400 transition-all shadow-2xl">
+        <div class="text-6xl mb-4">💊</div>
+        <h3 class="text-2xl font-bold text-white mb-2">Drug Mechanisms</h3>
+        <p class="text-white/70">Match drugs to mechanisms of action</p>
+      </a>
+    </div>
+
+    <div class="bg-white/5 backdrop-blur border border-white/20 rounded-xl p-6">
+      <h4 class="text-white font-bold text-xl mb-3">Features</h4>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-white/80">
+        <div>✅ HTML5 Drag & Drop</div>
+        <div>✅ Visual Feedback</div>
+        <div>✅ Score Tracking</div>
+        <div>✅ Confetti Celebration</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Game 1: Organ Placement -->
+<div id="organ-game" class="min-h-screen bg-gradient-to-br from-blue-900 via-indigo-900 to-purple-900 p-8 font-sans">
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-8">
+      <h1 class="text-4xl font-bold text-white mb-2">Organ Placement Challenge</h1>
+      <p class="text-blue-200 text-lg">Drag organs to their correct positions on the body diagram</p>
+      <div class="mt-4 flex items-center justify-center gap-6">
+        <div class="px-4 py-2 bg-white/10 backdrop-blur rounded-lg border border-white/20">
+          <span class="text-white font-bold text-xl" id="organ-score">Score: 0/6</span>
+        </div>
+        <div class="px-4 py-2 bg-white/10 backdrop-blur rounded-lg border border-white/20">
+          <span class="text-white font-bold text-xl" id="organ-timer">Time: 0s</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-12 gap-6">
+      <div class="col-span-4 space-y-4">
+        <h3 class="text-2xl font-bold text-white mb-4">Organ Bank</h3>
+
+        <div id="heart" draggable="true" ondragstart="dragStart(event)" data-organ="heart"
+             class="organ-item bg-gradient-to-r from-red-500 to-pink-600 p-4 rounded-xl shadow-lg cursor-move hover:scale-105 transition-all border-2 border-transparent hover:border-white">
+          <div class="flex items-center gap-3">
+            <span class="text-5xl">❤️</span>
+            <div>
+              <h4 class="text-white font-bold text-lg">Heart</h4>
+              <p class="text-white/80 text-sm">Pumps blood throughout body</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="lungs" draggable="true" ondragstart="dragStart(event)" data-organ="lungs"
+             class="organ-item bg-gradient-to-r from-cyan-500 to-blue-600 p-4 rounded-xl shadow-lg cursor-move hover:scale-105 transition-all border-2 border-transparent hover:border-white">
+          <div class="flex items-center gap-3">
+            <span class="text-5xl">🫁</span>
+            <div>
+              <h4 class="text-white font-bold text-lg">Lungs</h4>
+              <p class="text-white/80 text-sm">Gas exchange organ</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="liver" draggable="true" ondragstart="dragStart(event)" data-organ="liver"
+             class="organ-item bg-gradient-to-r from-amber-600 to-orange-700 p-4 rounded-xl shadow-lg cursor-move hover:scale-105 transition-all border-2 border-transparent hover:border-white">
+          <div class="flex items-center gap-3">
+            <span class="text-5xl">🍖</span>
+            <div>
+              <h4 class="text-white font-bold text-lg">Liver</h4>
+              <p class="text-white/80 text-sm">Metabolic powerhouse</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="stomach" draggable="true" ondragstart="dragStart(event)" data-organ="stomach"
+             class="organ-item bg-gradient-to-r from-green-500 to-emerald-600 p-4 rounded-xl shadow-lg cursor-move hover:scale-105 transition-all border-2 border-transparent hover:border-white">
+          <div class="flex items-center gap-3">
+            <span class="text-5xl">🫃</span>
+            <div>
+              <h4 class="text-white font-bold text-lg">Stomach</h4>
+              <p class="text-white/80 text-sm">Digests food</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="kidneys" draggable="true" ondragstart="dragStart(event)" data-organ="kidneys"
+             class="organ-item bg-gradient-to-r from-purple-500 to-violet-600 p-4 rounded-xl shadow-lg cursor-move hover:scale-105 transition-all border-2 border-transparent hover:border-white">
+          <div class="flex items-center gap-3">
+            <span class="text-5xl">🫘</span>
+            <div>
+              <h4 class="text-white font-bold text-lg">Kidneys</h4>
+              <p class="text-white/80 text-sm">Filters blood</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="brain" draggable="true" ondragstart="dragStart(event)" data-organ="brain"
+             class="organ-item bg-gradient-to-r from-pink-500 to-rose-600 p-4 rounded-xl shadow-lg cursor-move hover:scale-105 transition-all border-2 border-transparent hover:border-white">
+          <div class="flex items-center gap-3">
+            <span class="text-5xl">🧠</span>
+            <div>
+              <h4 class="text-white font-bold text-lg">Brain</h4>
+              <p class="text-white/80 text-sm">Control center</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-span-8">
+        <div class="relative bg-white/5 backdrop-blur border-2 border-white/20 rounded-3xl p-8" style="height: 800px;">
+          <h3 class="text-2xl font-bold text-white mb-4 text-center">Human Body Diagram</h3>
+
+          <svg viewBox="0 0 400 700" class="absolute inset-0 w-full h-full opacity-20 pointer-events-none">
+            <ellipse cx="200" cy="80" rx="60" ry="70" fill="white" stroke="white" stroke-width="2"/>
+            <rect x="150" y="140" width="100" height="180" rx="20" fill="white" stroke="white" stroke-width="2"/>
+            <rect x="140" y="150" width="30" height="150" rx="15" fill="white"/>
+            <rect x="230" y="150" width="30" height="150" rx="15" fill="white"/>
+            <rect x="160" y="310" width="30" height="200" rx="15" fill="white"/>
+            <rect x="210" y="310" width="30" height="200" rx="15" fill="white"/>
+          </svg>
+
+          <div id="drop-brain" ondrop="drop(event)" ondragover="allowDrop(event)" data-correct="brain"
+               class="drop-zone absolute top-12 left-1/2 -translate-x-1/2 w-32 h-32 border-4 border-dashed border-pink-400/50 rounded-full flex items-center justify-center text-pink-300 font-bold text-sm hover:bg-pink-500/10 transition-all">
+            Brain
+          </div>
+
+          <div id="drop-lungs" ondrop="drop(event)" ondragover="allowDrop(event)" data-correct="lungs"
+               class="drop-zone absolute top-40 left-1/2 -translate-x-1/2 w-40 h-28 border-4 border-dashed border-cyan-400/50 rounded-xl flex items-center justify-center text-cyan-300 font-bold text-sm hover:bg-cyan-500/10 transition-all">
+            Lungs
+          </div>
+
+          <div id="drop-heart" ondrop="drop(event)" ondragover="allowDrop(event)" data-correct="heart"
+               class="drop-zone absolute top-44 left-1/2 -translate-x-1/2 translate-x-8 w-24 h-24 border-4 border-dashed border-red-400/50 rounded-full flex items-center justify-center text-red-300 font-bold text-sm hover:bg-red-500/10 transition-all">
+            Heart
+          </div>
+
+          <div id="drop-liver" ondrop="drop(event)" ondragover="allowDrop(event)" data-correct="liver"
+               class="drop-zone absolute top-64 right-1/2 translate-x-12 w-32 h-24 border-4 border-dashed border-orange-400/50 rounded-xl flex items-center justify-center text-orange-300 font-bold text-sm hover:bg-orange-500/10 transition-all">
+            Liver
+          </div>
+
+          <div id="drop-stomach" ondrop="drop(event)" ondragover="allowDrop(event)" data-correct="stomach"
+               class="drop-zone absolute top-72 left-1/2 -translate-x-8 w-28 h-20 border-4 border-dashed border-green-400/50 rounded-xl flex items-center justify-center text-green-300 font-bold text-sm hover:bg-green-500/10 transition-all">
+            Stomach
+          </div>
+
+          <div id="drop-kidneys" ondrop="drop(event)" ondragover="allowDrop(event)" data-correct="kidneys"
+               class="drop-zone absolute top-80 left-1/2 -translate-x-1/2 w-36 h-16 border-4 border-dashed border-purple-400/50 rounded-xl flex items-center justify-center text-purple-300 font-bold text-sm hover:bg-purple-500/10 transition-all">
+            Kidneys
+          </div>
+        </div>
+
+        <button onclick="resetOrganGame()" class="mt-6 w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl transition-all shadow-lg">
+          Reset Game
+        </button>
+      </div>
+    </div>
+
+    <div id="organ-complete-modal" class="fixed inset-0 bg-black/80 backdrop-blur hidden items-center justify-center z-50" style="display: none;">
+      <div class="bg-gradient-to-br from-green-500 to-emerald-600 rounded-3xl p-12 max-w-md text-center shadow-2xl relative overflow-hidden">
+        <div id="confetti-container" class="absolute inset-0 pointer-events-none"></div>
+        <div class="relative z-10">
+          <div class="text-8xl mb-4">🏆</div>
+          <h2 class="text-4xl font-bold text-white mb-4">Perfect Score!</h2>
+          <p class="text-white text-xl mb-2">You correctly placed all organs!</p>
+          <p class="text-white/90 text-lg mb-6" id="final-time">Time: 0s</p>
+          <button onclick="closeOrganModal()" class="px-8 py-3 bg-white text-green-600 font-bold rounded-xl hover:bg-green-50 transition-all shadow-lg">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let organScore = 0;
+  let organStartTime = Date.now();
+  let organTimerInterval;
+  const totalOrgans = 6;
+
+  organTimerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - organStartTime) / 1000);
+    document.getElementById('organ-timer').textContent = 'Time: ' + elapsed + 's';
+  }, 1000);
+
+  function dragStart(event) {
+    event.dataTransfer.setData('organ', event.target.dataset.organ);
+    event.target.style.opacity = '0.5';
+  }
+
+  function allowDrop(event) {
+    event.preventDefault();
+    event.currentTarget.classList.add('scale-105', 'bg-white/10');
+  }
+
+  function drop(event) {
+    event.preventDefault();
+    const organName = event.dataTransfer.getData('organ');
+    const correctOrgan = event.currentTarget.dataset.correct;
+    const dropZone = event.currentTarget;
+
+    dropZone.classList.remove('scale-105', 'bg-white/10');
+
+    const draggedElement = document.querySelector('[data-organ="' + organName + '"]');
+    if (draggedElement) draggedElement.style.opacity = '1';
+
+    if (organName === correctOrgan) {
+      dropZone.innerHTML = draggedElement.innerHTML;
+      dropZone.classList.remove('border-dashed');
+      dropZone.classList.add('border-solid', 'bg-green-500/30', 'border-green-400', 'animate-pulse');
+      setTimeout(() => dropZone.classList.remove('animate-pulse'), 500);
+
+      draggedElement.style.display = 'none';
+
+      organScore++;
+      document.getElementById('organ-score').textContent = 'Score: ' + organScore + '/' + totalOrgans;
+
+      if (organScore === totalOrgans) {
+        setTimeout(showOrganCompletion, 500);
+      }
+    } else {
+      dropZone.classList.add('animate-shake', 'bg-red-500/30', 'border-red-500');
+      setTimeout(() => {
+        dropZone.classList.remove('animate-shake', 'bg-red-500/30', 'border-red-500');
+      }, 600);
+    }
+  }
+
+  function showOrganCompletion() {
+    clearInterval(organTimerInterval);
+    const elapsed = Math.floor((Date.now() - organStartTime) / 1000);
+    document.getElementById('final-time').textContent = 'Time: ' + elapsed + 's';
+
+    const modal = document.getElementById('organ-complete-modal');
+    modal.style.display = 'flex';
+
+    createConfetti();
+  }
+
+  function createConfetti() {
+    const container = document.getElementById('confetti-container');
+    const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ff6600', '#ff69b4'];
+
+    for (let i = 0; i < 100; i++) {
+      const confetti = document.createElement('div');
+      const size = Math.random() * 10 + 5;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const startX = Math.random() * 100;
+
+      confetti.style.cssText = `
+        position: absolute;
+        width: ${size}px;
+        height: ${size}px;
+        background: ${color};
+        top: -20px;
+        left: ${startX}%;
+        border-radius: 50%;
+        animation: confetti-fall ${Math.random() * 2 + 1}s ease-in forwards;
+        transform: rotate(${Math.random() * 360}deg);
+      `;
+
+      container.appendChild(confetti);
+    }
+  }
+
+  function closeOrganModal() {
+    document.getElementById('organ-complete-modal').style.display = 'none';
+  }
+
+  function resetOrganGame() {
+    organScore = 0;
+    organStartTime = Date.now();
+    document.getElementById('organ-score').textContent = 'Score: 0/' + totalOrgans;
+
+    document.querySelectorAll('.organ-item').forEach(item => {
+      item.style.display = 'flex';
+      item.style.opacity = '1';
+    });
+
+    document.querySelectorAll('.drop-zone').forEach(zone => {
+      const correctOrgan = zone.dataset.correct;
+      zone.innerHTML = correctOrgan.charAt(0).toUpperCase() + correctOrgan.slice(1);
+      zone.classList.remove('border-solid', 'bg-green-500/30', 'border-green-400');
+      zone.classList.add('border-dashed');
+    });
+  }
+</script>
+
+<!-- Navigation -->
+<div class="fixed bottom-8 right-8 flex gap-4 z-50">
+  <a href="#organ-game" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-lg transition-all">
+    Organ
+  </a>
+  <a href="#symptom-game" class="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg shadow-lg transition-all">
+    Symptom
+  </a>
+  <a href="#drug-game" class="px-6 py-3 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-lg shadow-lg transition-all">
+    Drug
+  </a>
+</div>
+
+</body>
+</html>
