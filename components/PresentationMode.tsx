@@ -33,6 +33,8 @@ import { detectBrowser, type BrowserInfo } from '../utils/browser-detection';
 import { usePrompt } from '../hooks/usePrompt';
 import { useSlideScrollMemory } from '../hooks/useSlideScrollMemory';
 
+import { useBookmarks, Bookmark } from '../hooks/useBookmarks';
+import { BookmarkManager } from './BookmarkManager';
 interface PresentationModeProps {
   html: string;
   onClose: () => void;
@@ -217,6 +219,16 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
+
+  // Load annotations when slide changes
+  useEffect(() => {
+    const loadAnnotations = async () => {
+      const strokes = await loadSlideAnnotations(presentationId, currentSlide);
+      setCurrentSlideStrokes(strokes);
+    };
+
+    loadAnnotations();
+  }, [presentationId, currentSlide]);
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
   }, []);
@@ -404,6 +416,11 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           // Toggle timer settings
           setShowTimerSettings(prev => !prev);
           break;
+        case 's':
+        case 'S':
+          // Toggle split-screen mode
+          setShowSplitScreen(prev => !prev);
+          break;
         case 'Home':
           e.preventDefault();
           if (e.ctrlKey || e.metaKey) {
@@ -529,7 +546,6 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                   -webkit-overflow-scrolling: touch !important;
                   scroll-behavior: smooth !important;
                   padding: clamp(1rem, 3vw, 2rem) !important;
-                  transition: opacity 0.3s ease, transform 0.3s ease !important;
 
                   /* Better scrollbar styling */
                   scrollbar-width: thin !important;
@@ -562,21 +578,86 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                   background: rgba(6, 182, 212, 0.7) !important;
                 }
 
-                /* Hidden slides */
+                /* Hidden slides - Base state */
                 .slide-hidden {
-                  opacity: 0 !important;
-                  transform: translateX(100px) !important;
                   pointer-events: none !important;
                   visibility: hidden !important;
                 }
 
-                /* Visible slide */
+                /* Visible slide - Base state */
                 .slide-visible {
-                  opacity: 1 !important;
-                  transform: translateX(0) !important;
                   pointer-events: auto !important;
                   visibility: visible !important;
                   z-index: 10 !important;
+                }
+
+                /* Fade Transition */
+                .transition-fade {
+                  transition: opacity 0.5s ease !important;
+                }
+                .transition-fade.slide-hidden {
+                  opacity: 0 !important;
+                }
+                .transition-fade.slide-visible {
+                  opacity: 1 !important;
+                }
+
+                /* Slide Transition */
+                .transition-slide {
+                  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s ease !important;
+                }
+                .transition-slide.slide-hidden {
+                  transform: translateX(100%) !important;
+                  opacity: 0 !important;
+                }
+                .transition-slide.slide-visible {
+                  transform: translateX(0) !important;
+                  opacity: 1 !important;
+                }
+
+                /* Zoom Transition */
+                .transition-zoom {
+                  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s ease !important;
+                  transform-origin: center center !important;
+                }
+                .transition-zoom.slide-hidden {
+                  transform: scale(0.5) !important;
+                  opacity: 0 !important;
+                }
+                .transition-zoom.slide-visible {
+                  transform: scale(1) !important;
+                  opacity: 1 !important;
+                }
+
+                /* Flip Transition */
+                .transition-flip {
+                  transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.8s ease !important;
+                  transform-origin: center center !important;
+                  backface-visibility: hidden !important;
+                }
+                .transition-flip.slide-hidden {
+                  transform: rotateY(90deg) !important;
+                  opacity: 0 !important;
+                }
+                .transition-flip.slide-visible {
+                  transform: rotateY(0deg) !important;
+                  opacity: 1 !important;
+                }
+
+                /* Cube Transition (3D) */
+                .transition-cube {
+                  transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                  transform-origin: center center !important;
+                  transform-style: preserve-3d !important;
+                  backface-visibility: hidden !important;
+                }
+                .transition-cube.slide-hidden {
+                  transform: perspective(1200px) rotateY(-90deg) translateZ(-50vw) !important;
+                  opacity: 0 !important;
+                }
+                .transition-cube.slide-visible {
+                  transform: perspective(1200px) rotateY(0deg) translateZ(0) !important;
+                  opacity: 1 !important;
                 }
 
                 /* Body and HTML setup */
@@ -586,6 +667,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                   padding: 0 !important;
                   height: 100vh !important;
                   width: 100vw !important;
+                  perspective: 1200px !important;
                 }
 
                 html {
@@ -609,7 +691,8 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                   max-width: 100% !important;
                   height: auto !important;
                 }
-              `;
+
+              `
               doc.head.appendChild(style);
             }
           } catch (e) {
@@ -631,6 +714,18 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
       const slides = doc.querySelectorAll('[data-slide], .slide, section');
 
       slides.forEach((slide, index) => {
+        // Remove all transition classes first
+        slide.classList.remove(
+          'transition-fade',
+          'transition-slide',
+          'transition-zoom',
+          'transition-flip',
+          'transition-cube'
+        );
+
+        // Add the current transition class
+        slide.classList.add(`transition-${transitionType}`);
+
         if (index === currentSlide) {
           slide.classList.remove('slide-hidden');
           slide.classList.add('slide-visible');
@@ -646,7 +741,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
         }
       });
     }
-  }, [currentSlide, getScrollPosition]);
+  }, [currentSlide, transitionType, getScrollPosition]);
 
   // Apply per-slide zoom levels
   useEffect(() => {
@@ -1363,6 +1458,15 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           </div>
         </div>
       )}
+
+      {/* Picture-in-Picture Video */}
+      <PictureInPictureVideo
+        show={showPiPVideo}
+        onClose={() => setShowPiPVideo(false)}
+        enableWebcam={enableWebcam}
+        videoSource={pipVideoSource}
+        initialCorner="bottom-right"
+      />
     </div>
   );
 };
