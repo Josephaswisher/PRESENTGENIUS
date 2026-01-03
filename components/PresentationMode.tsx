@@ -137,6 +137,11 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
   const [pipVideoSource, setPipVideoSource] = useState<string | undefined>(undefined);
   const [enableWebcam, setEnableWebcam] = useState(false);
 
+  // Split-screen mode state
+  const [showSplitScreen, setShowSplitScreen] = useState(false);
+  const [splitDividerPosition, setSplitDividerPosition] = useState(60); // percentage (60% slide, 40% notes)
+  const [isDraggingDivider, setIsDraggingDivider] = useState(false);
+
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1083,6 +1088,7 @@ case ' ':
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
     }
+  }, [showDrawing]);
 
   // Split-screen divider drag handlers
   const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {

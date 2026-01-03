@@ -1320,12 +1320,30 @@ REMEMBER:
           enhancedHtml = injectEnhancementLayerHTML(enhancedHtml, enhancements);
           console.log(`✅ [Claude] Added ${enhancements.length} content enhancements`);
         }
-
-        onProgress?.('complete', 100, '✅ Presentation generated with enhancements');
-        return enhancedHtml;
       } catch (enhancementError) {
-        console.warn('⚠️ [Claude] Failed to add enhancements, returning presentation without them:', enhancementError);
-        onProgress?.('complete', 100, '✅ Presentation generated (enhancements skipped)');
+        console.warn('⚠️ [Claude] Failed to add enhancements, continuing without them:', enhancementError);
+      }
+
+      // Post-processing: Inject mini-games based on content detection
+      onProgress?.('complete', 99, '🎮 Detecting mini-game opportunities...');
+
+      try {
+        const detectedGames = detectMiniGameOpportunities(enhancedHtml);
+
+        if (detectedGames.length > 0) {
+          console.log(`[Claude] Detected ${detectedGames.length} mini-game opportunities:`,
+                     detectedGames.map(g => `${g.gameType} (${Math.round(g.confidence * 100)}%)`));
+
+          enhancedHtml = injectMiniGames(enhancedHtml, { autoDetect: true });
+          onProgress?.('complete', 100, `✅ Presentation complete with ${detectedGames.length} mini-game(s)`);
+        } else {
+          onProgress?.('complete', 100, '✅ Presentation generated successfully');
+        }
+
+        return enhancedHtml;
+      } catch (miniGameError) {
+        console.warn('⚠️ [Claude] Failed to inject mini-games, returning presentation without them:', miniGameError);
+        onProgress?.('complete', 100, '✅ Presentation generated (mini-games skipped)');
         return enhancedHtml;
       }
     } catch (error: any) {
