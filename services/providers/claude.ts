@@ -9,6 +9,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { BaseProvider, FileInput, GenerationOptions, ProgressCallback } from './base-provider';
 import { injectCheckpointSlides } from '../checkpoint-injector';
 import { injectMiniGames, detectMiniGameOpportunities } from '../mini-game-injector';
+import { analyzeContent, enhanceHTMLWithAnalysis, generateTableOfContents } from '../content-analyzer';
 
 export class ClaudeProvider extends BaseProvider {
   private client: Anthropic;
@@ -1284,13 +1285,52 @@ REMEMBER:
         }
       }
 
-      // Post-processing: Inject checkpoint slides every 3 slides
-      onProgress?.('complete', 96, '🧠 Adding knowledge checkpoint slides...');
+      // Post-processing Step 1: Analyze content structure and add semantic markup
+      onProgress?.('complete', 95, '🔍 Analyzing content structure...');
 
       let enhancedHtml = htmlContent;
 
       try {
-        const htmlWithCheckpoints = await injectCheckpointSlides(htmlContent, {
+        const structure = analyzeContent(htmlContent);
+        console.log(`📊 [Claude] Content analysis complete:`, {
+          sections: structure.sections.length,
+          objectives: structure.learningObjectives.length,
+          cases: structure.clinicalCases.length,
+          keyTerms: structure.keyTerms.length,
+        });
+
+        // Enhance HTML with semantic markup and tooltips
+        onProgress?.('complete', 96, '✨ Adding semantic markup and tooltips...');
+        enhancedHtml = enhanceHTMLWithAnalysis(htmlContent, structure);
+
+        // Add table of contents if multiple sections
+        if (structure.sections.length > 3) {
+          const toc = generateTableOfContents(structure);
+          // Inject TOC before closing body tag
+          enhancedHtml = enhancedHtml.replace('</body>', `${toc}</body>`);
+        }
+
+        // Store structure in data attribute for glossary panel
+        const structureJson = JSON.stringify({
+          objectives: structure.learningObjectives,
+          cases: structure.clinicalCases,
+          keyTerms: structure.keyTerms,
+        });
+        enhancedHtml = enhancedHtml.replace(
+          '<body',
+          `<body data-content-structure='${structureJson.replace(/'/g, '&apos;')}'`
+        );
+
+        onProgress?.('complete', 97, '✅ Content structure enhanced');
+      } catch (analysisError) {
+        console.warn('⚠️ [Claude] Content analysis failed, skipping enhancement:', analysisError);
+      }
+
+      // Post-processing Step 2: Inject checkpoint slides every 3 slides
+      onProgress?.('complete', 97, '🧠 Adding knowledge checkpoint slides...');
+
+      try {
+        const htmlWithCheckpoints = await injectCheckpointSlides(enhancedHtml, {
           interval: 3,
           provider: 'gemini', // Use Gemini for checkpoint questions (faster)
           includeActiveRecall: true,

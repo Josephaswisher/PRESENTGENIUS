@@ -857,7 +857,6 @@ case ' ':
           } catch (e) {
             console.warn('Could not initialize progressive disclosure:', e);
           }
-            }
           } catch (e) {
             // Non-critical error, presentation can still work
             console.warn('Could not inject presentation styles:', e);
