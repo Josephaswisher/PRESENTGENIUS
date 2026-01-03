@@ -195,6 +195,8 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
         if (settings.defaultTimerTarget) setTargetDuration(settings.defaultTimerTarget);
         if (typeof settings.showControlsOnStart === 'boolean') setShowControls(settings.showControlsOnStart);
         if (settings.slideZoomLevels) setSlideZoomLevels(settings.slideZoomLevels);
+        if (typeof settings.showSplitScreen === 'boolean') setShowSplitScreen(settings.showSplitScreen);
+        if (settings.splitDividerPosition) setSplitDividerPosition(settings.splitDividerPosition);
       }
     } catch (error) {
       console.error('Failed to load presentation settings:', error);
