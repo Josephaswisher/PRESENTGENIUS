@@ -27,7 +27,7 @@ const MODEL_LIMITS: Record<OpenRouterModelId, number> = {
   'anthropic/claude-3.5-sonnet': 200000,
   'anthropic/claude-3.5-haiku': 200000,
   'anthropic/claude-opus-4-5': 200000,
-  'anthropic/claude-sonnet-4.5': 200000,
+  'anthropic/claude-sonnet-4-5': 200000,
   'openai/gpt-4o': 128000,
   'openai/gpt-4o-mini': 128000,
   'openai/o1': 200000,

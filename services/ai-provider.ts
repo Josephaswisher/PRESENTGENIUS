@@ -108,10 +108,10 @@ const PROVIDERS_LIST: ProviderInfo[] = [
   {
     id: 'claude',
     name: 'Claude Sonnet 4.5',
-    model: 'claude-sonnet-4.5',
+    model: 'claude-sonnet-4-5',
     models: [
       {
-        id: 'claude-sonnet-4.5',
+        id: 'claude-sonnet-4-5',
         name: 'Claude Sonnet 4.5',
         contextLimit: 200000,
         costTier: 'balanced',
@@ -492,7 +492,7 @@ export async function generateWithProvider(
           () => claudeProvider.generate(
             enhancedPrompt,
             files,
-            { ...opts, modelId: options.modelId || 'claude-sonnet-4.5' },
+            { ...opts, modelId: options.modelId || 'claude-sonnet-4-5' },
             (phase, progress, message, error, partialContent) => {
               onProgress?.(phase as GenerationPhase, progress, message, error, partialContent);
             }
@@ -622,7 +622,7 @@ export async function refineWithProvider(
         () => claudeProvider.refine(
           currentHtml,
           instruction,
-          modelId || 'claude-sonnet-4.5',
+          modelId || 'claude-sonnet-4-5',
           (phase, progress, message, error, partialContent) => {
             onProgress?.(phase as GenerationPhase, progress, message, error, partialContent);
           }
