@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { ArrowLeftIcon, PlayIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlayIcon, ArrowDownTrayIcon, CloudIcon, Cog6ToothIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { UserMenu } from './auth/UserMenu';
 import type { Creation } from './CreationHistory';
 
@@ -18,6 +18,9 @@ interface HeaderProps {
   onBack: () => void;
   onPresent?: () => void;
   onExport?: () => void;
+  onShowDataViewer?: () => void;
+  onShowSettings?: () => void;
+  onShowVersionHistory?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,6 +28,9 @@ export const Header: React.FC<HeaderProps> = ({
   onBack,
   onPresent,
   onExport,
+  onShowDataViewer,
+  onShowSettings,
+  onShowVersionHistory,
 }) => {
   return (
     <header className="fixed top-0 left-0 right-0 h-16 flex items-center justify-between px-6 border-b border-white/5 bg-zinc-950/20 backdrop-blur-xl z-[100]">
@@ -68,6 +74,27 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right: Actions + User */}
       <div className="flex items-center gap-3">
+        {onShowSettings && (
+          <button
+            onClick={onShowSettings}
+            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800/50 rounded-xl transition-all border border-zinc-700/50"
+            title="Settings"
+          >
+            <Cog6ToothIcon className="w-5 h-5" />
+          </button>
+        )}
+
+        {onShowDataViewer && (
+          <button
+            onClick={onShowDataViewer}
+            className="px-4 py-2 bg-zinc-800/50 backdrop-blur hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl transition-all flex items-center gap-2 text-sm font-medium border border-zinc-700/50"
+            title="View Cloud Database"
+          >
+            <CloudIcon className="w-4 h-4" />
+            <span className="hidden sm:inline">Database</span>
+          </button>
+        )}
+
         {activeCreation && (
           <div className="flex items-center gap-2 p-1 bg-white/5 rounded-2xl border border-white/5">
             {onPresent && (
@@ -77,6 +104,15 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <PlayIcon className="w-4 h-4 fill-white" />
                 <span>PRESENT</span>
+              </button>
+            )}
+            {onShowVersionHistory && (
+              <button
+                onClick={onShowVersionHistory}
+                className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+                title="Version History"
+              >
+                <ClockIcon className="w-5 h-5" />
               </button>
             )}
             {onExport && (

@@ -20,6 +20,7 @@ import { QRCodeDisplay } from './QRCodeDisplay';
 import { ScrollHints } from './ScrollHints';
 import { ScrollProgressIndicator } from './ScrollProgressIndicator';
 import { MiniMapNavigation } from './MiniMapNavigation';
+import { PictureInPictureVideo } from './PictureInPictureVideo';
 import {
   createSession,
   updateSlide,
@@ -32,9 +33,25 @@ import { getScrollStyles } from '../utils/ios-scroll-fix';
 import { detectBrowser, type BrowserInfo } from '../utils/browser-detection';
 import { usePrompt } from '../hooks/usePrompt';
 import { useSlideScrollMemory } from '../hooks/useSlideScrollMemory';
+import {
+  initializeProgressiveDisclosure,
+  injectProgressiveDisclosureStyles,
+  enableProgressiveDisclosure,
+  disableProgressiveDisclosure,
+  resetProgressiveDisclosure,
+  revealNext,
+  revealPrevious,
+  revealAll,
+  isFullyRevealed,
+  getProgressString,
+  type ProgressiveDisclosureState,
+} from '../utils/progressive-disclosure';
+
 
 import { useBookmarks, Bookmark } from '../hooks/useBookmarks';
 import { BookmarkManager } from './BookmarkManager';
+import { detectContentTypeAndBackground, applyBackgroundStyle } from '../utils/content-detector';
+
 interface PresentationModeProps {
   html: string;
   onClose: () => void;
@@ -87,6 +104,10 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
   // Mini-map navigation state
   const [showMiniMap, setShowMiniMap] = useState(false);
 
+  // Bookmark states
+  const [showBookmarkManager, setShowBookmarkManager] = useState(false);
+  const [showBookmarkTypeSelector, setShowBookmarkTypeSelector] = useState(false);
+
   // Zoom/pan states
   const [zoomLevel, setZoomLevel] = useState(1);
   const [panPosition, setPanPosition] = useState({ x: 0, y: 0 });
@@ -109,6 +130,19 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
   // Scroll memory hook (sessionStorage - clears on tab close)
   const { saveScrollPosition, getScrollPosition } = useSlideScrollMemory('presentgenius-scroll');
+
+  // Bookmarks hook (persisted to localStorage per presentation)
+  const {
+    bookmarks,
+    addBookmark,
+    removeBookmark,
+    updateBookmarkNote,
+    getBookmark,
+    hasBookmark,
+    clearAllBookmarks,
+    exportBookmarks,
+    importBookmarks,
+  } = useBookmarks({ presentationId: title || 'default' });
 
   // Per-slide zoom levels (persisted to localStorage)
   const [slideZoomLevels, setSlideZoomLevels] = useState<{[key: number]: number}>({});
@@ -152,12 +186,15 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
         defaultTimerTarget: targetDuration,
         showControlsOnStart: showControls,
         slideZoomLevels,
+        showSplitScreen,
+        splitDividerPosition,
+        transitionType,
       };
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch (error) {
       console.error('Failed to save presentation settings:', error);
     }
-  }, [autoAdvanceInterval, targetDuration, showControls, slideZoomLevels]);
+  }, [autoAdvanceInterval, targetDuration, showControls, slideZoomLevels, showSplitScreen, splitDividerPosition, transitionType]);
 
   // Listen for fullscreen changes
   useEffect(() => {
@@ -343,7 +380,9 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           break;
         case 'Escape':
           // Close overlays first, then exit
-          if (showThumbnails) setShowThumbnails(false);
+          if (showBookmarkManager) setShowBookmarkManager(false);
+          else if (showBookmarkTypeSelector) setShowBookmarkTypeSelector(false);
+          else if (showThumbnails) setShowThumbnails(false);
           else if (showTimerSettings) setShowTimerSettings(false);
           else if (showNotesEditor) setShowNotesEditor(false);
           else onClose();
@@ -367,6 +406,22 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
         case 'N':
           // Uppercase N (Shift+N): Toggle mini-map navigation
           e.preventDefault();
+        case 'b':
+          // Lowercase b: Quick bookmark current slide with star
+          e.preventDefault();
+          if (hasBookmark(currentSlide)) {
+            // If already bookmarked, show type selector
+            setShowBookmarkTypeSelector(true);
+          } else {
+            // Quick star bookmark
+            addBookmark(currentSlide, 'star');
+          }
+          break;
+        case 'B':
+          // Uppercase B (Shift+B): Toggle bookmark manager
+          e.preventDefault();
+          setShowBookmarkManager(prev => !prev);
+          break;
           setShowMiniMap(prev => !prev);
           break;
         case 'm':
@@ -886,6 +941,40 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
     }
+
+  // Split-screen divider drag handlers
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingDivider(true);
+  }, []);
+
+  const handleDividerMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDraggingDivider) return;
+
+    const containerWidth = window.innerWidth;
+    const newPosition = (e.clientX / containerWidth) * 100;
+
+    // Constrain divider position between 30% and 80%
+    const constrainedPosition = Math.min(80, Math.max(30, newPosition));
+    setSplitDividerPosition(constrainedPosition);
+  }, [isDraggingDivider]);
+
+  const handleDividerMouseUp = useCallback(() => {
+    setIsDraggingDivider(false);
+  }, []);
+
+  // Add global mouse event listeners for divider dragging
+  useEffect(() => {
+    if (isDraggingDivider) {
+      window.addEventListener('mousemove', handleDividerMouseMove);
+      window.addEventListener('mouseup', handleDividerMouseUp);
+
+      return () => {
+        window.removeEventListener('mousemove', handleDividerMouseMove);
+        window.removeEventListener('mouseup', handleDividerMouseUp);
+      };
+    }
+  }, [isDraggingDivider, handleDividerMouseMove, handleDividerMouseUp]);
   }, [showDrawing]);
 
   // Track mouse for laser pointer
@@ -1386,6 +1475,25 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
               <p className="text-white/40 text-xs mt-1">Time between slides when auto-play is active</p>
             </div>
 
+            {/* Transition Type */}
+            <div className="mb-4">
+              <label className="block text-white/60 text-sm mb-2">
+                Slide Transition Effect
+              </label>
+              <select
+                value={transitionType}
+                onChange={(e) => setTransitionType(e.target.value as 'fade' | 'slide' | 'zoom' | 'flip' | 'cube')}
+                className="w-full bg-zinc-800 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              >
+                <option value="fade">Fade - Classic opacity transition</option>
+                <option value="slide">Slide - Horizontal sliding</option>
+                <option value="zoom">Zoom - Scale in/out effect</option>
+                <option value="flip">Flip - Card flip animation</option>
+                <option value="cube">Cube - 3D cube rotation</option>
+              </select>
+              <p className="text-white/40 text-xs mt-1">Choose how slides transition between each other</p>
+            </div>
+
             {/* Show Controls on Start */}
             <div className="mb-6">
               <label className="flex items-center gap-2 text-white/80 text-sm cursor-pointer">
@@ -1411,6 +1519,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                   setTargetDuration(null);
                   setAutoAdvanceInterval(10000);
                   setShowControls(true);
+                  setTransitionType('fade');
                   setShowTimerSettings(false);
                 }}
                 className="px-4 py-2 bg-zinc-700 text-white rounded-lg hover:bg-zinc-600 transition-colors"

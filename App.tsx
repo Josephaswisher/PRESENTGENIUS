@@ -2,24 +2,34 @@
  * PRESENTGENIUS - Dr. Swisher's Interactive Canvas
  * Unified lecture creation with integrated medical research
  */
-import React, { useState, useEffect, useRef } from 'react';
-import { Hero } from './components/Hero';
+import React, { useState, useEffect, useMemo } from 'react';
+import { CenteredInput } from './components/CenteredInput';
 import { LivePreview } from './components/LivePreview';
 import { ChatPanel, ChatMessage } from './components/ChatPanel';
 import { CreationHistory, Creation } from './components/CreationHistory';
 import { PresentationMode } from './components/PresentationMode';
-import { DrSwisherResearchPanel } from './components/DrSwisherResearchPanel';
-import { BoardQuestionsPanel } from './components/BoardQuestionsPanel';
 import { PrintablesPanel } from './components/PrintablesPanel';
-import { InteractiveCanvas } from './components/InteractiveCanvas';
-import { FileInput, GenerationOptions } from './services/gemini';
-import { generateWithProvider, refineWithProvider, AIProvider, GenerationPhase } from './services/ai-provider';
-import { savePresentation, isSupabaseConfigured, savePromptHistory } from './services/supabase';
+import { SupabaseDataViewer } from './components/SupabaseDataViewer';
+import { SettingsPanel } from './components/SettingsPanel';
+import { BrowserWarning } from './components/BrowserWarning';
+import { VersionHistory } from './components/VersionHistory';
+import { versionControl } from './services/version-control';
+import { FileInput } from './services/gemini';
+import { generateWithProvider, refineWithProvider, AIProvider, GenerationPhase, GenerationOptions } from './services/ai-provider';
+import { generateParallelCourse } from './services/parallel-generation';
+import { savePresentation, isSupabaseConfigured, savePromptHistory, deletePresentation, Presentation } from './services/supabase';
 import { backupPresentation, restoreGoogleDriveSession, isGoogleDriveConnected } from './services/google-drive';
 import { BackgroundEffects } from './components/BackgroundEffects';
 import { Header } from './components/Header';
 import { GenerationProgress } from './components/GenerationProgress';
-import { ArrowUpTrayIcon } from '@heroicons/react/24/solid';
+import { ToastContainer } from './components/ToastContainer';
+import { useToast } from './hooks/useToast';
+import { useConfirm } from './hooks/useConfirm';
+import { ConfirmDialog } from './components/ConfirmDialog';
+import { InputDialog } from './components/InputDialog';
+import { loadHistory, saveHistory, mergeHistory, migrateOldStorage, getStorageStats } from './lib/storage';
+import { sanitizeHtmlContent } from './utils/sanitization';
+import { generateIntelligentTitle } from './services/title-generator';
 
 const App: React.FC = () => {
   const [activeCreation, setActiveCreation] = useState<Creation | null>(null);
@@ -27,41 +37,66 @@ const App: React.FC = () => {
   const [isRefining, setIsRefining] = useState(false);
   const [history, setHistory] = useState<Creation[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const { error: showError, success: showSuccess, info: showInfo } = useToast();
+  const { confirm } = useConfirm();
+  const [isRegeneratingTitles, setIsRegeneratingTitles] = useState(false);
+  const [isArchiveSidebarOpen, setIsArchiveSidebarOpen] = useState(false);
 
   // AI Provider state
-  const [currentProvider, setCurrentProvider] = useState<AIProvider>('gemini');
+  const [currentProvider, setCurrentProvider] = useState<AIProvider>('openrouter');
+  const [selectedModelId, setSelectedModelId] = useState<string>('deepseek/deepseek-chat');
+
+  // Chat panel resize state
+  const [chatPanelWidth, setChatPanelWidth] = useState(512); // Default 32rem = 512px
+  const [isResizing, setIsResizing] = useState(false);
+  const MIN_CHAT_WIDTH = 320; // 20rem
+  const MAX_CHAT_WIDTH = 800; // 50rem
 
   // Generation progress state
   const [genPhase, setGenPhase] = useState<GenerationPhase>('starting');
   const [genProgress, setGenProgress] = useState(0);
   const [genMessage, setGenMessage] = useState('');
+  const [streamingHtml, setStreamingHtml] = useState('');
+  const sanitizedStreamingHtml = useMemo(() => 
+    streamingHtml ? sanitizeHtmlContent(streamingHtml, { stripForms: true }) : '',
+    [streamingHtml]
+  );
 
   // Presentation mode
   const [showPresentation, setShowPresentation] = useState(false);
 
-  // Sidebar tab in workspace
-  const [sidebarTab, setSidebarTab] = useState<'chat' | 'research' | 'questions'>('research');
-
   // Printables panel
   const [showPrintables, setShowPrintables] = useState(false);
 
-  const importInputRef = useRef<HTMLInputElement>(null);
+  // Supabase data viewer
+  const [showDataViewer, setShowDataViewer] = useState(false);
+
+  // Settings panel
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Version history
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+
+  const allowStreamingScripts = import.meta.env.VITE_ALLOW_IFRAME_SCRIPTS === 'true';
+  const streamingSandbox = allowStreamingScripts ? 'allow-scripts' : '';
 
   // Load history on mount
   useEffect(() => {
     const initHistory = async () => {
-      const saved = localStorage.getItem('gemini_app_history');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          setHistory(parsed.map((item: any) => ({
-            ...item,
-            timestamp: new Date(item.timestamp)
-          })));
-        } catch (e) {
-          console.error("Failed to load history", e);
-        }
+      // Migrate old storage key if exists
+      migrateOldStorage();
+
+      // Load from localStorage
+      const localHistory = loadHistory();
+
+      if (localHistory.length > 0) {
+        setHistory(localHistory);
+        console.log(`[App] Loaded ${localHistory.length} presentations from localStorage`);
       }
+
+      // Log storage stats
+      const stats = getStorageStats();
+      console.log(`[App] Storage: ${stats.itemCount} items, ${Math.round(stats.estimatedSize / 1024)}KB (${Math.round(stats.usagePercent)}%)`);
     };
     initHistory();
     restoreGoogleDriveSession();
@@ -70,10 +105,13 @@ const App: React.FC = () => {
   // Save history when it changes
   useEffect(() => {
     if (history.length > 0) {
-      try {
-        localStorage.setItem('gemini_app_history', JSON.stringify(history));
-      } catch (e) {
-        console.warn("Local storage error", e);
+      const result = saveHistory(history);
+      if (!result.success) {
+        console.error('[App] Failed to save history:', result.message);
+        // Could show a toast notification here
+      } else if (result.message) {
+        console.warn('[App] Storage warning:', result.message);
+        // Could show a warning toast here
       }
     }
   }, [history]);
@@ -86,6 +124,27 @@ const App: React.FC = () => {
       setChatMessages([]);
     }
   }, [activeCreation?.id]);
+
+  // Auto-checkpoint for version control
+  useEffect(() => {
+    if (activeCreation?.id) {
+      // Start auto-checkpoint when presentation is active
+      versionControl.startAutoCheckpoint(activeCreation.id, () => ({
+        slides: activeCreation.html ? [{ content: activeCreation.html }] : [],
+        metadata: {
+          name: activeCreation.name,
+          timestamp: activeCreation.timestamp,
+          activityId: activeCreation.activityId,
+          learnerLevel: activeCreation.learnerLevel,
+        },
+      }));
+
+      // Cleanup on unmount or when switching presentations
+      return () => {
+        versionControl.stopAutoCheckpoint(activeCreation.id);
+      };
+    }
+  }, [activeCreation?.id, activeCreation?.html]);
 
   // File to base64 helper
   const fileToBase64 = (file: File): Promise<string> => {
@@ -107,15 +166,20 @@ const App: React.FC = () => {
   const handleGenerate = async (
     promptText: string,
     files: File[] = [],
-    options: GenerationOptions = {},
-    provider: AIProvider = 'gemini'
+    provider: AIProvider = 'minimax',
+    modelId?: string,
+    useParallel: boolean = false
   ) => {
+    const options: GenerationOptions = {
+      modelId: modelId || 'MiniMax-M2.1',
+    };
     setIsGenerating(true);
     setActiveCreation(null);
     setCurrentProvider(provider);
     setGenProgress(0);
     setGenPhase('starting');
     setGenMessage('Initializing...');
+    setStreamingHtml(''); // Reset streaming preview
 
     try {
       const processedFiles: FileInput[] = [];
@@ -124,26 +188,72 @@ const App: React.FC = () => {
         processedFiles.push({ base64, mimeType: file.type.toLowerCase() });
       }
 
-      const html = await generateWithProvider(
-        provider,
-        promptText,
-        processedFiles,
-        options,
-        (phase, progress, message) => {
-          setGenPhase(phase);
-          setGenProgress(progress);
-          setGenMessage(message || '');
+      // Use parallel generation if enabled (5 agents working concurrently)
+      let html: string;
+      try {
+        html = useParallel
+          ? await generateParallelCourse(
+              promptText,
+              processedFiles,
+              provider,
+              (phase, progress, message, error, partialContent) => {
+                setGenPhase(phase as GenerationPhase);
+                setGenProgress(progress);
+                setGenMessage(message || '');
+                if (partialContent) setStreamingHtml(partialContent);
+              }
+            )
+          : await generateWithProvider(
+              provider,
+              promptText,
+              processedFiles,
+              options,
+              (phase, progress, message, error, partialContent) => {
+                setGenPhase(phase as GenerationPhase);
+                setGenProgress(progress);
+                setGenMessage(message || '');
+                if (partialContent) setStreamingHtml(partialContent);
+              }
+            );
+      } catch (parallelError: any) {
+        // If parallel generation fails, fall back to single-agent generation
+        if (useParallel) {
+          console.warn('⚠️ Parallel generation failed, falling back to single-agent:', parallelError);
+          setGenMessage('⚠️ Falling back to single-agent generation...');
+          html = await generateWithProvider(
+            provider,
+            promptText,
+            processedFiles,
+            options,
+            (phase, progress, message) => {
+              setGenPhase(phase as GenerationPhase);
+              setGenProgress(progress);
+              setGenMessage(message || '');
+            }
+          );
+        } else {
+          throw parallelError; // Re-throw if not parallel mode
         }
-      );
+      }
 
       if (html) {
         const previewImage = processedFiles.length > 0
           ? `data:${processedFiles[0].mimeType};base64,${processedFiles[0].base64}`
           : undefined;
 
-        const creationName = files.length > 0
-          ? files[0].name + (files.length > 1 ? ` +${files.length - 1}` : '')
-          : promptText.slice(0, 50) || 'New Presentation';
+        // Generate intelligent title based on presentation content
+        setGenMessage('Generating title...');
+        let creationName: string;
+        try {
+          creationName = await generateIntelligentTitle(html, provider);
+          console.log('[App] Generated intelligent title:', creationName);
+        } catch (error) {
+          console.warn('[App] Title generation failed, using fallback:', error);
+          // Fallback to original naming logic
+          creationName = files.length > 0
+            ? files[0].name + (files.length > 1 ? ` +${files.length - 1}` : '')
+            : promptText.slice(0, 50) || 'New Presentation';
+        }
 
         const newCreation: Creation = {
           id: crypto.randomUUID(),
@@ -181,50 +291,49 @@ const App: React.FC = () => {
       }
     } catch (error: any) {
       console.error("Generation failed:", error);
-      if (error.message && (error.message.includes("VITE_GEMINI_API_KEY") || error.message.includes("API key"))) {
-        alert("Missing API Key!\n\nPlease check your .env file and ensure VITE_GEMINI_API_KEY or VITE_ANTHROPIC_API_KEY is set.\n\nSee .env.example for details.");
+
+      // Use formatted message if available (from new error handler)
+      if (error.formattedMessage) {
+        showError(error.formattedMessage);
+      } else if (error.validation?.suggestions) {
+        // Fallback: format manually if validation is present
+        const suggestions = error.validation.suggestions.join('\n');
+        showError(`${error.message}\n\nWhat you can try:\n${suggestions}`);
+      } else if (error.message && (error.message.includes("API key") || error.message.includes("not configured"))) {
+        // Legacy API key error handling
+        showError(`${error.message}\n\nPlease check your .env.local file and ensure your API key is properly configured. See .env.example for details.`);
       } else {
-        alert(`Generation failed: ${error.message || "Something went wrong. Please try again."}`);
+        // Generic error
+        showError(`Generation failed: ${error.message || "Something went wrong. Please try again."}`);
       }
     } finally {
       setIsGenerating(false);
       setGenProgress(100);
       setGenPhase('complete');
+      // Clear streaming preview after a brief delay
+      setTimeout(() => setStreamingHtml(''), 1000);
     }
   };
 
   // Chat refinement handler
-  const handleChatRefine = async (message: string) => {
+  const handleChatRefine = async (message: string, provider: AIProvider, modelId: string) => {
     if (!activeCreation) return;
+
+    console.log('🔵 [Chat Refinement] Starting refinement...');
+    console.log('📝 User message:', message);
+    console.log('📄 Current HTML length:', activeCreation.html.length);
+    console.log('🤖 Provider:', provider);
+    console.log('🎯 Model:', modelId);
 
     setChatMessages(prev => [...prev, { id: `user-${Date.now()}`, role: 'user', text: message }]);
     setIsRefining(true);
 
     try {
-      // Enhanced system prompt for refinement with copilot capabilities
-      const systemPrompt = `You are Dr. Swisher's Lecture Copilot. You are refining an interactive medical education presentation.
-
-CURRENT TOPIC: ${activeCreation.name}
-AUDIENCE: ${activeCreation.activityId || 'Medical Education'} (Learner Level: ${activeCreation.learnerLevel || 'Residents'})
-
-Your goal is to satisfy the user's request while maintaining medical accuracy and high-quality UI.
-
-INSTRUCTION: "${message}"
-
-CAPABILITIES:
-1. **Direct HTML Refinement**: Update the HTML code directly.
-2. **Structural Actions**: If the user wants to add/remove sections or significantly change the outline, include an action tag.
-
-AVAILABLE ACTIONS:
-- [ACTION:GENERATE_SLIDES] - Use this if the user wants to completely rebuild the presentation or add large amounts of new content from research.
-- [ACTION:RESEARCH:topic] - Trigger a research deep-dive for a specific medical topic.
-
-If you update the code, return the full new HTML.
-If you use an action, include the [ACTION:...] tag in your response.
-
-ALWAYS maintain the premium Tailwind/medical aesthetic.`;
-
-      const response = await refineWithProvider(currentProvider, activeCreation.html, `${systemPrompt}\n\nUSER INSTRUCTION: ${message}`);
+      // Pass only the user's message - system context will be added by refineWithProvider
+      console.log('⏳ Calling refineWithProvider...');
+      const response = await refineWithProvider(provider, activeCreation.html, message, modelId);
+      console.log('✅ Received response, length:', response.length);
+      console.log('📦 Response preview:', response.substring(0, 200));
 
       let cleanHtml = response;
       let action: string | undefined;
@@ -245,8 +354,24 @@ ALWAYS maintain the premium Tailwind/medical aesthetic.`;
         cleanHtml = cleanHtml.slice(htmlStart, htmlEnd + 7);
       }
 
-      // If response is just an action or empty text with action, we might not have HTML
-      if (cleanHtml.startsWith('<!DOCTYPE') || cleanHtml.includes('<html')) {
+      console.log('🔍 [Chat Refinement] HTML validation:', {
+        startsWithDoctype: cleanHtml.startsWith('<!DOCTYPE'),
+        includesHtml: cleanHtml.includes('<html'),
+        includesHtmlTag: cleanHtml.includes('<html>'),
+        cleanHtmlLength: cleanHtml.length,
+        cleanHtmlPreview: cleanHtml.substring(0, 100)
+      });
+
+      // Check if we have valid HTML to update
+      const hasValidHtml = cleanHtml.length > 100 && (
+        cleanHtml.startsWith('<!DOCTYPE') ||
+        cleanHtml.startsWith('<html') ||
+        cleanHtml.includes('<html') ||
+        cleanHtml.includes('</html>')
+      );
+
+      if (hasValidHtml && !action) {
+        console.log('✅ [Chat Refinement] Updating presentation with new HTML');
         const updatedCreation = { ...activeCreation, html: cleanHtml };
         setActiveCreation(updatedCreation);
         setHistory(prev => prev.map(item => item.id === updatedCreation.id ? updatedCreation : item));
@@ -254,78 +379,65 @@ ALWAYS maintain the premium Tailwind/medical aesthetic.`;
         setChatMessages(prev => [...prev, {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
-          text: "I've updated the presentation as requested. You can see the changes in the live preview."
+          text: "✅ I've updated the presentation as requested. You can see the changes in the live preview."
         }]);
       } else if (action === 'GENERATE_SLIDES') {
-        // To rebuild, we would ideally need the canvas doc, but we can try to infer or ask the user
+        console.log('📋 [Chat Refinement] Action detected: GENERATE_SLIDES');
         setChatMessages(prev => [...prev, {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
           text: "That's a significant change! I'll need to rebuild the slide deck to accommodate that properly. Would you like me to go ahead and regenerate the outline?"
         }]);
       } else {
+        console.warn('⚠️ [Chat Refinement] No valid HTML detected, showing response as text');
+        console.log('Response type:', {
+          hasAction: !!action,
+          responseLength: response.length,
+          cleanHtmlLength: cleanHtml.length,
+          hasValidHtml
+        });
         setChatMessages(prev => [...prev, {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
-          text: cleanHtml || "I've processed your request."
+          text: cleanHtml || "I've processed your request. (No HTML changes detected)"
         }]);
       }
 
     } catch (error: any) {
-      console.error("Refinement failed:", error);
+      console.error("❌ [Chat Refinement] Refinement failed:", error);
+      console.error("Error details:", {
+        message: error.message,
+        stack: error.stack,
+        validation: error.validation,
+        name: error.name
+      });
+
+      // Show detailed error to user - use formatted message if available
+      let errorMessage: string;
+
+      if (error.formattedMessage) {
+        // New error handler provides formatted message
+        errorMessage = error.formattedMessage;
+      } else if (error.validation?.suggestions) {
+        // Format manually if validation is present
+        const suggestions = error.validation.suggestions
+          .map((s: string, i: number) => `${i + 1}. ${s}`)
+          .join('\n');
+        errorMessage = `${error.message}\n\nWhat you can try:\n${suggestions}`;
+      } else {
+        // Fallback to basic message
+        errorMessage = error.message || 'Unknown error - check console for details';
+      }
+
       setChatMessages(prev => [...prev, {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        text: `Sorry, I encountered an error while updating: ${error.message || 'Unknown error'}`
+        text: `❌ Refinement Error:\n${errorMessage}`
       }]);
     } finally {
+      console.log('🏁 [Chat Refinement] Finished (isRefining = false)');
       setIsRefining(false);
     }
-  };
-
-  // Canvas generation handler
-  const handleCanvasGenerate = async (canvasDoc: any) => {
-    const sectionsText = canvasDoc.sections.map((section: any, i: number) => {
-      let text = `\n## Section ${i + 1}: ${section.title}\n`;
-      text += `Type: ${section.type}, Slides: ${section.slideCount}\n`;
-      if (section.keyPoints?.length > 0) {
-        text += `Key Points: ${section.keyPoints.join(', ')}\n`;
-      }
-      if (section.content) {
-        text += `Content:\n${section.content}\n`;
-      }
-      if (section.research) {
-        text += `\nResearch:\n${section.research.content?.slice(0, 1000) || ''}\n`;
-      }
-      if (section.selectedQuestionId && section.followUpQuestions?.length > 0) {
-        const selectedQ = section.followUpQuestions.find((q: any) => q.id === section.selectedQuestionId);
-        if (selectedQ) {
-          text += `\n🎯 TRANSITION: "${selectedQ.question}"\n`;
-        }
-      }
-      return text;
-    }).join('\n---\n');
-
-    const fullPrompt = `Create a Socratic-style medical education presentation:
-
-TITLE: ${canvasDoc.topic} - Lecture
-TOPIC: ${canvasDoc.topic}
-TARGET AUDIENCE: ${canvasDoc.targetAudience}
-DURATION: ${canvasDoc.duration} minutes
-
-SECTIONS:
-${sectionsText}
-
-INSTRUCTIONS:
-1. Use Socratic method - guide discovery with questions
-2. Each section should flow naturally to the next
-3. Include transition questions prominently
-4. Make it interactive and clinically relevant
-5. Use the research content for evidence-based accuracy
-
-Generate an engaging, visually polished presentation.`;
-
-    await handleGenerate(fullPrompt, [], {}, currentProvider);
   };
 
   const handleReset = () => {
@@ -337,47 +449,172 @@ Generate an engaging, visually polished presentation.`;
     setActiveCreation(creation);
   };
 
-  const handleImportClick = () => {
-    importInputRef.current?.click();
+  const handleDeleteCreation = async (creation: Creation) => {
+    // Confirm deletion
+    const confirmed = await confirm({
+      title: 'Delete Presentation',
+      message: `Delete "${creation.name}"? This cannot be undone.`,
+      variant: 'danger',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    // Delete from Supabase if configured
+    if (isSupabaseConfigured()) {
+      const success = await deletePresentation(creation.id);
+      if (success) {
+        console.log('[App] Deleted presentation from Supabase:', creation.id);
+      } else {
+        console.error('[App] Failed to delete from Supabase:', creation.id);
+        showError('Failed to delete from cloud storage');
+        return; // Don't delete locally if cloud delete failed
+      }
+    }
+
+    // Remove from local state
+    setHistory(prev => prev.filter(item => item.id !== creation.id));
+
+    // Clear active creation if it's the one being deleted
+    if (activeCreation?.id === creation.id) {
+      setActiveCreation(null);
+      setChatMessages([]);
+    }
+
+    console.log('[App] Deleted presentation from history:', creation.id);
   };
 
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Chat panel resize handlers
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = event.target?.result as string;
-        const parsed = JSON.parse(json);
+  useEffect(() => {
+    if (!isResizing) return;
 
-        if (parsed.html && parsed.name) {
-          const importedCreation: Creation = {
-            ...parsed,
-            timestamp: new Date(parsed.timestamp || Date.now()),
-            id: parsed.id || crypto.randomUUID()
-          };
-
-          setHistory(prev => {
-            const exists = prev.some(c => c.id === importedCreation.id);
-            return exists ? prev : [importedCreation, ...prev];
-          });
-          setActiveCreation(importedCreation);
-        } else {
-          alert("Invalid file format.");
-        }
-      } catch (err) {
-        alert("Failed to import.");
-      }
-      if (importInputRef.current) importInputRef.current.value = '';
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = window.innerWidth - e.clientX;
+      const constrainedWidth = Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, newWidth));
+      setChatPanelWidth(constrainedWidth);
     };
-    reader.readAsText(file);
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, MIN_CHAT_WIDTH, MAX_CHAT_WIDTH]);
+
+  const handleUpdateHtml = (updatedHtml: string) => {
+    if (!activeCreation) return;
+    const updatedCreation = { ...activeCreation, html: updatedHtml };
+    setActiveCreation(updatedCreation);
+    setHistory(prev => prev.map(item => item.id === updatedCreation.id ? updatedCreation : item));
+  };
+
+  const handleLoadFromSupabase = (presentation: Presentation) => {
+    // Convert Supabase Presentation to local Creation type
+    const creation: Creation = {
+      id: presentation.id,
+      name: presentation.name,
+      html: presentation.html,
+      originalImage: presentation.original_image,
+      timestamp: new Date(presentation.created_at),
+      activityId: undefined,
+      learnerLevel: undefined,
+    };
+
+    setActiveCreation(creation);
+    setShowDataViewer(false);
+
+    // Merge with local history (no duplicates, keeps most recent)
+    setHistory(prev => mergeHistory(prev, [creation]));
+  };
+
+  const handleRegenerateAllTitles = async () => {
+    if (history.length === 0) {
+      showInfo('No presentations to update');
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: 'Regenerate All Titles',
+      message: `Update ${history.length} presentation${history.length > 1 ? 's' : ''} with intelligent AI-generated titles?`,
+      variant: 'info',
+      confirmText: 'Update All',
+      cancelText: 'Cancel',
+    });
+
+    if (!confirmed) return;
+
+    setIsRegeneratingTitles(true);
+    showInfo(`Regenerating titles for ${history.length} presentations...`);
+
+    const updatedHistory: Creation[] = [];
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < history.length; i++) {
+      const item = history[i];
+
+      try {
+        console.log(`[TitleMigration] Processing ${i + 1}/${history.length}: ${item.name}`);
+
+        // Generate intelligent title
+        const newTitle = await generateIntelligentTitle(item.html, currentProvider);
+
+        // Only update if we got a different, valid title
+        if (newTitle && newTitle !== item.name && newTitle.length >= 3) {
+          updatedHistory.push({ ...item, name: newTitle });
+          successCount++;
+          console.log(`[TitleMigration] ✓ Updated: "${item.name}" → "${newTitle}"`);
+        } else {
+          updatedHistory.push(item);
+          console.log(`[TitleMigration] ⊘ Kept original: "${item.name}"`);
+        }
+      } catch (error) {
+        console.error(`[TitleMigration] ✗ Failed for "${item.name}":`, error);
+        updatedHistory.push(item); // Keep original on error
+        failCount++;
+      }
+
+      // Show progress every 3 items
+      if ((i + 1) % 3 === 0 || i === history.length - 1) {
+        showInfo(`Processing... ${i + 1}/${history.length} titles`);
+      }
+    }
+
+    // Update history with new titles
+    setHistory(updatedHistory);
+    setIsRegeneratingTitles(false);
+
+    // Show results
+    if (successCount > 0) {
+      showSuccess(`✓ Updated ${successCount} title${successCount > 1 ? 's' : ''}!${failCount > 0 ? ` (${failCount} failed)` : ''}`);
+    } else if (failCount > 0) {
+      showError(`Failed to update titles. Please try again.`);
+    } else {
+      showInfo('No titles needed updating');
+    }
+
+    console.log(`[TitleMigration] Complete: ${successCount} updated, ${failCount} failed, ${history.length - successCount - failCount} unchanged`);
   };
 
   const isWorkspaceActive = !!activeCreation || isGenerating;
 
   return (
     <div className="h-[100dvh] bg-zinc-950 text-zinc-50 selection:bg-cyan-500/30 overflow-hidden relative flex flex-col font-['Outfit']">
+      <BrowserWarning />
       <BackgroundEffects />
 
       {!showPresentation && (
@@ -385,6 +622,9 @@ Generate an engaging, visually polished presentation.`;
           activeCreation={activeCreation}
           onBack={handleReset}
           onPresent={() => setShowPresentation(true)}
+          onShowDataViewer={() => setShowDataViewer(true)}
+          onShowSettings={() => setShowSettings(true)}
+          onShowVersionHistory={() => setShowVersionHistory(true)}
           onExport={() => {
             if (!activeCreation) return;
             const blob = new Blob([JSON.stringify(activeCreation)], { type: 'application/json' });
@@ -397,36 +637,80 @@ Generate an engaging, visually polished presentation.`;
         />
       )}
 
-      {/* Landing / Interactive Canvas View */}
+      {/* Landing / Centered Input View */}
       <div
         className={`
-          absolute inset-0 z-10 flex flex-col overflow-hidden pt-16
+          absolute inset-0 z-10 flex flex-col overflow-y-auto scroll-smooth-touch
           transition-all duration-700 cubic-bezier(0.4, 0, 0.2, 1)
+          snap-y overscroll-contain scrollbar-thin
           ${isWorkspaceActive
             ? 'opacity-0 scale-95 pointer-events-none translate-y-8'
             : 'opacity-100 scale-100 translate-y-0'
           }
         `}
       >
-        {/* Interactive Canvas - Full Screen */}
-        <InteractiveCanvas
-          onGenerateSlides={handleCanvasGenerate}
-          currentProvider={currentProvider}
-          onProviderChange={setCurrentProvider}
-        />
+        <CenteredInput onGenerate={handleGenerate} isGenerating={isGenerating} />
 
         {/* History Bar at Bottom */}
-        <div className="flex-shrink-0 border-t border-white/5 bg-zinc-900/40 backdrop-blur-xl">
-          <div className="px-4 py-3">
-            <CreationHistory history={history} onSelect={handleSelectCreation} />
+        {history.length > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 border-t border-white/5 bg-zinc-900/90 backdrop-blur-xl z-20 transition-all duration-300 snap-end">
+            <div className={`px-4 transition-all duration-300 ${isArchiveSidebarOpen ? 'py-3' : 'py-2'}`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsArchiveSidebarOpen(!isArchiveSidebarOpen)}
+                    className="p-1 hover:bg-zinc-800 rounded transition-colors"
+                    title={isArchiveSidebarOpen ? "Collapse archive" : "Expand archive"}
+                  >
+                    <svg className={`w-4 h-4 text-zinc-500 transition-transform duration-300 ${isArchiveSidebarOpen ? '' : 'rotate-180'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                    Archive {!isArchiveSidebarOpen && `(${history.length})`}
+                  </h2>
+                  <div className="h-px flex-1 bg-zinc-800 w-12"></div>
+                </div>
+
+                {/* Regenerate Titles Button */}
+                {isArchiveSidebarOpen && (
+                  <button
+                  onClick={handleRegenerateAllTitles}
+                  disabled={isRegeneratingTitles || isGenerating}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-cyan-500/10 hover:bg-cyan-500/20
+                           text-cyan-400 hover:text-cyan-300 border border-cyan-500/30 hover:border-cyan-500/50
+                           rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Regenerate all titles with AI"
+                >
+                  {isRegeneratingTitles ? (
+                    <>
+                      <div className="w-3 h-3 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin"></div>
+                      <span>Updating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span>Regenerate Titles</span>
+                    </>
+                  )}
+                </button>
+                )}
+              </div>
+
+              {isArchiveSidebarOpen && (
+                <CreationHistory history={history} onSelect={handleSelectCreation} onDelete={handleDeleteCreation} />
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Workspace View (Chat + Preview) */}
+      {/* Workspace View (Preview + Chat Assistant) */}
       <div
         className={`
-          fixed inset-0 z-40 flex bg-zinc-950
+          fixed inset-0 z-40 flex flex-col md:flex-row bg-zinc-950 pt-16 overflow-hidden
           transition-all duration-700 cubic-bezier(0.2, 0.8, 0.2, 1)
           ${isWorkspaceActive
             ? 'opacity-100 translate-y-0'
@@ -434,115 +718,55 @@ Generate an engaging, visually polished presentation.`;
           }
         `}
       >
-        {/* Left: Tabbed Sidebar */}
-        {activeCreation && (
-          <div className="w-80 md:w-96 flex-shrink-0 h-full border-r border-zinc-800 z-50 flex flex-col bg-zinc-950">
-            {/* Sidebar Tabs */}
-            <div className="flex border-b border-zinc-800 shrink-0">
-              <button
-                onClick={() => setSidebarTab('research')}
-                className={`flex-1 px-3 py-2.5 text-xs font-medium transition-all ${sidebarTab === 'research'
-                  ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
-                  : 'text-zinc-500 hover:text-white'
-                  }`}
-              >
-                🔍 Research
-              </button>
-              <button
-                onClick={() => setSidebarTab('chat')}
-                className={`flex-1 px-3 py-2.5 text-xs font-medium transition-all ${sidebarTab === 'chat'
-                  ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
-                  : 'text-zinc-500 hover:text-white'
-                  }`}
-              >
-                💬 Refine
-              </button>
-              <button
-                onClick={() => setSidebarTab('questions')}
-                className={`flex-1 px-3 py-2.5 text-xs font-medium transition-all ${sidebarTab === 'questions'
-                  ? 'text-purple-400 border-b-2 border-purple-400 bg-purple-500/5'
-                  : 'text-zinc-500 hover:text-white'
-                  }`}
-              >
-                ❓ Board Qs
-              </button>
-            </div>
-
-            {/* Tab Content */}
-            <div className="flex-1 overflow-hidden">
-              {sidebarTab === 'research' && (
-                <div className="h-full overflow-y-auto p-3">
-                  <DrSwisherResearchPanel
-                    compact
-                    onInsertContent={(content, citations) => {
-                      const citationText = citations.length > 0
-                        ? `\n\nSources:\n${citations.slice(0, 3).join('\n')}`
-                        : '';
-                      handleChatRefine(`Add this research content:\n\n${content}${citationText}`);
-                      setSidebarTab('chat');
-                    }}
-                  />
-                </div>
-              )}
-              {sidebarTab === 'chat' && (
-                <ChatPanel
-                  messages={chatMessages}
-                  onSendMessage={handleChatRefine}
-                  isProcessing={isRefining}
-                />
-              )}
-              {sidebarTab === 'questions' && (
-                <div className="h-full overflow-y-auto p-3">
-                  <BoardQuestionsPanel
-                    provider={currentProvider}
-                    onInsertQuestions={(questions) => {
-                      const qText = questions.map((q, i) =>
-                        `Q${i + 1}: ${q.stem}\n${q.options.map(o => `${o.letter}. ${o.text}`).join('\n')}`
-                      ).join('\n\n');
-                      handleChatRefine(`Add these board-style questions:\n\n${qText}`);
-                      setSidebarTab('chat');
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Right: Live Preview */}
-        <div className="flex-1 h-full relative min-w-0">
+        {/* Left: Live Preview */}
+        <div className="flex-1 h-full relative min-w-0 md:border-r border-zinc-800 overflow-hidden">
           <LivePreview
             creation={activeCreation}
             isLoading={isGenerating}
             onReset={handleReset}
+            onUpdateHtml={handleUpdateHtml}
             onPresent={() => setShowPresentation(true)}
             onPrintables={() => setShowPrintables(true)}
             className="w-full h-full rounded-none border-none"
           />
         </div>
-      </div>
 
-      {/* Import Button */}
-      {!isWorkspaceActive && (
-        <div className="fixed bottom-20 right-4 z-50">
-          <button
-            onClick={handleImportClick}
-            className="flex items-center gap-2 px-3 py-2 bg-zinc-800/80 backdrop-blur rounded-lg
-                       text-zinc-400 hover:text-white transition-all text-sm"
-            title="Import Artifact"
+        {/* Right: Chat Assistant (only show after generation completes, hidden on mobile) */}
+        {activeCreation && !isGenerating && (
+          <div
+            className="hidden md:flex flex-shrink-0 h-full flex-col bg-zinc-950/50 backdrop-blur-xl transition-all duration-300 ease-in-out overflow-hidden relative"
+            style={{ width: `${chatPanelWidth}px` }}
           >
-            <ArrowUpTrayIcon className="w-4 h-4" />
-            <span className="hidden sm:inline">Import</span>
-          </button>
-          <input
-            type="file"
-            ref={importInputRef}
-            onChange={handleImportFile}
-            accept=".json"
-            className="hidden"
-          />
-        </div>
-      )}
+            {/* Resize Handle */}
+            <div
+              onMouseDown={handleResizeStart}
+              className={`absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-cyan-500/50 transition-colors ${
+                isResizing ? 'bg-cyan-500' : ''
+              }`}
+              title="Drag to resize chat panel"
+            >
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-12 bg-zinc-600 hover:bg-cyan-500 transition-colors" />
+            </div>
+
+            <div className="px-4 py-3 border-b border-zinc-800/50">
+              <h3 className="text-sm font-semibold text-white">Chat Assistant</h3>
+              <p className="text-xs text-zinc-500 mt-0.5">Refine your presentation • Drag edge to resize</p>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <ChatPanel
+                messages={chatMessages}
+                onSendMessage={handleChatRefine}
+                isProcessing={isRefining}
+                selectedProvider={currentProvider}
+                selectedModelId={selectedModelId}
+                onProviderChange={setCurrentProvider}
+                onModelChange={setSelectedModelId}
+                currentHtmlLength={activeCreation?.html.length || 0}
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Presentation Mode */}
       {showPresentation && activeCreation && (
@@ -563,6 +787,19 @@ Generate an engaging, visually polished presentation.`;
         />
       )}
 
+      {/* Supabase Data Viewer */}
+      <SupabaseDataViewer
+        isOpen={showDataViewer}
+        onClose={() => setShowDataViewer(false)}
+        onLoadPresentation={handleLoadFromSupabase}
+      />
+
+      {/* Settings Panel */}
+      <SettingsPanel
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
+
       {/* Generation Progress */}
       <GenerationProgress
         isVisible={isGenerating}
@@ -570,6 +807,68 @@ Generate an engaging, visually polished presentation.`;
         progress={genProgress}
         message={genMessage}
       />
+
+      {/* Streaming Preview - Live HTML Preview */}
+      {isGenerating && streamingHtml && (
+        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-6xl h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-zinc-700 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                <h3 className="text-lg font-semibold text-white">Live Preview - Streaming Content</h3>
+              </div>
+              <div className="text-sm text-zinc-400">
+                {Math.round(streamingHtml.length / 1024)}KB received
+              </div>
+            </div>
+
+            {/* Preview Content */}
+            <div className="flex-1 overflow-hidden p-4">
+              <iframe
+                srcDoc={sanitizedStreamingHtml}
+                className="w-full h-full bg-white rounded-lg"
+                sandbox={streamingSandbox}
+                title="Streaming Preview"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notifications */}
+      <ToastContainer />
+
+      {/* Dialog Overlays */}
+      <ConfirmDialog />
+      <InputDialog />
+
+      {/* Version History */}
+      {showVersionHistory && activeCreation && (
+        <VersionHistory
+          presentationId={activeCreation.id}
+          currentSnapshot={{
+            slides: activeCreation.html ? [{ content: activeCreation.html }] : [],
+            metadata: {
+              name: activeCreation.name,
+              timestamp: activeCreation.timestamp,
+              activityId: activeCreation.activityId,
+              learnerLevel: activeCreation.learnerLevel,
+            },
+          }}
+          onRestore={(snapshot) => {
+            // Restore the presentation from snapshot
+            setActiveCreation({
+              ...activeCreation,
+              html: snapshot.slides?.[0]?.content || activeCreation.html,
+              name: snapshot.metadata?.name || activeCreation.name,
+            });
+            showSuccess('Presentation restored successfully');
+            setShowVersionHistory(false);
+          }}
+          onClose={() => setShowVersionHistory(false)}
+        />
+      )}
     </div>
   );
 };
