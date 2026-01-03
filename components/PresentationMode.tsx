@@ -19,6 +19,7 @@ import {
 import { QRCodeDisplay } from './QRCodeDisplay';
 import { ScrollHints } from './ScrollHints';
 import { ScrollProgressIndicator } from './ScrollProgressIndicator';
+import { MiniMapNavigation } from './MiniMapNavigation';
 import {
   createSession,
   updateSlide,
@@ -80,6 +81,9 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
   // Notes editor state
   const [showNotesEditor, setShowNotesEditor] = useState(false);
   const [presentationNotes, setPresentationNotes] = useState('');
+
+  // Mini-map navigation state
+  const [showMiniMap, setShowMiniMap] = useState(false);
 
   // Zoom/pan states
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -345,9 +349,13 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           setShowDrawing(prev => !prev);
           break;
         case 'n':
-        case 'N':
-          // Toggle speaker notes (bottom-left panel)
+          // Lowercase n: Toggle speaker notes (bottom-left panel)
           setShowNotes(prev => !prev);
+          break;
+        case 'N':
+          // Uppercase N (Shift+N): Toggle mini-map navigation
+          e.preventDefault();
+          setShowMiniMap(prev => !prev);
           break;
         case 'm':
         case 'M':
@@ -945,6 +953,16 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           iframeRef={iframeRef}
           currentSlide={currentSlide}
           show={showControls}
+        />
+
+        {/* Mini-Map Navigation - Hierarchical heading navigation */}
+        <MiniMapNavigation
+          iframeRef={iframeRef}
+          currentSlide={currentSlide}
+          totalSlides={totalSlides}
+          onNavigate={setCurrentSlide}
+          onClose={() => setShowMiniMap(false)}
+          show={showMiniMap}
         />
 
         {/* QR Code Overlay */}
