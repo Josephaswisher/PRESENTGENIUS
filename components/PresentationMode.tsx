@@ -20,6 +20,7 @@ import { QRCodeDisplay } from './QRCodeDisplay';
 import { ScrollHints } from './ScrollHints';
 import { ScrollProgressIndicator } from './ScrollProgressIndicator';
 import { MiniMapNavigation } from './MiniMapNavigation';
+import { PresentationDrawingLayer } from './PresentationDrawingLayer';
 import { PictureInPictureVideo } from './PictureInPictureVideo';
 import {
   createSession,
@@ -86,6 +87,12 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawColor, setDrawColor] = useState('#ff0000');
   const [brushSize, setBrushSize] = useState(3);
+  const [drawTool, setDrawTool] = useState<'pen' | 'eraser'>('pen');
+
+  // Generate a presentation ID based on title
+  const presentationId = useMemo(() => {
+    return title ? `pres-${title.replace(/\s+/g, '-').toLowerCase()}` : `pres-${Date.now()}`;
+  }, [title]);
 
   // Speaker notes state
   const [speakerNotes, setSpeakerNotes] = useState<{[key: number]: string}>({});
@@ -120,6 +127,15 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
   // Settings persistence
   const [autoAdvanceInterval, setAutoAdvanceInterval] = useState(10000); // milliseconds
+
+  // Progressive disclosure states
+  const [progressiveDisclosureEnabled, setProgressiveDisclosureEnabled] = useState(false);
+  const [progressiveDisclosureStates, setProgressiveDisclosureStates] = useState<{[slideIndex: number]: ProgressiveDisclosureState}>({});
+
+  // Picture-in-Picture video state
+  const [showPiPVideo, setShowPiPVideo] = useState(false);
+  const [pipVideoSource, setPipVideoSource] = useState<string | undefined>(undefined);
+  const [enableWebcam, setEnableWebcam] = useState(false);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -749,6 +765,26 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
               `
               doc.head.appendChild(style);
+
+          // Initialize progressive disclosure for all slides
+          try {
+            const doc = readyResult.data;
+            if (doc) {
+              // Inject progressive disclosure styles
+              injectProgressiveDisclosureStyles(doc);
+
+              // Initialize progressive disclosure state for each slide
+              const newStates: {[slideIndex: number]: ProgressiveDisclosureState} = {};
+              slides.forEach((slide, index) => {
+                if (slide instanceof HTMLElement) {
+                  newStates[index] = initializeProgressiveDisclosure(slide);
+                }
+              });
+              setProgressiveDisclosureStates(newStates);
+            }
+          } catch (e) {
+            console.warn('Could not initialize progressive disclosure:', e);
+          }
             }
           } catch (e) {
             // Non-critical error, presentation can still work
@@ -785,6 +821,11 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           slide.classList.remove('slide-hidden');
           slide.classList.add('slide-visible');
 
+          // Apply context-aware background for current slide
+          if (slide instanceof HTMLElement && slideBackgrounds[index]) {
+            applyBackgroundStyle(slide, slideBackgrounds[index]);
+          }
+
           // Auto-reset scroll to top (can restore saved position if scroll memory is enabled)
           if (slide instanceof HTMLElement) {
             const savedPosition = getScrollPosition(currentSlide);
@@ -796,7 +837,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
         }
       });
     }
-  }, [currentSlide, transitionType, getScrollPosition]);
+  }, [currentSlide, transitionType, getScrollPosition, slideBackgrounds]);
 
   // Apply per-slide zoom levels
   useEffect(() => {
@@ -1074,17 +1115,14 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
         />
 
         {/* Drawing Canvas Overlay */}
-        {showDrawing && (
-          <canvas
-            ref={canvasRef}
-            className="absolute inset-0 z-20 cursor-crosshair"
-            style={{ pointerEvents: 'auto' }}
-            onMouseDown={startDrawing}
-            onMouseMove={draw}
-            onMouseUp={stopDrawing}
-            onMouseLeave={stopDrawing}
-          />
-        )}
+        <PresentationDrawingLayer
+          presentationId={presentationId}
+          currentSlide={currentSlide}
+          isVisible={showDrawing}
+          tool={drawTool}
+          color={drawColor}
+          width={brushSize}
+        />
 
         {/* Click Zones - Subtle navigation areas */}
         <div
@@ -1142,6 +1180,147 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
         {/* Mini-Map Navigation - Hierarchical heading navigation */}
         <MiniMapNavigation
           iframeRef={iframeRef}
+
+        {/* Resizable Divider */}
+        {showSplitScreen && (
+          <div
+            className="relative w-1 bg-cyan-500/20 hover:bg-cyan-500/40 cursor-col-resize group transition-colors"
+            onMouseDown={handleDividerMouseDown}
+            role="separator"
+            aria-label="Resize split-screen divider"
+          >
+            {/* Drag handle indicator */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-16 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="w-1 h-12 bg-cyan-400 rounded-full shadow-lg shadow-cyan-500/50" />
+            </div>
+          </div>
+        )}
+
+        {/* Notes Panel */}
+        {showSplitScreen && (
+          <div
+            className="relative bg-zinc-900 overflow-hidden"
+            style={{
+              width: `${100 - splitDividerPosition}%`,
+              transition: isDraggingDivider ? 'none' : 'width 0.3s ease'
+            }}
+          >
+            <div className="h-full overflow-y-auto p-6">
+              {/* Notes Header */}
+              <div className="mb-4 pb-3 border-b border-white/10">
+                <h3 className="text-white font-semibold text-lg mb-1">
+                  Speaker Notes
+                </h3>
+                <p className="text-white/40 text-xs">
+                  Slide {currentSlide + 1} of {totalSlides}
+                </p>
+              </div>
+
+              {/* Notes Content */}
+              <div className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">
+                {speakerNotes[currentSlide] || (
+                  <div className="text-white/30 italic">
+                    No notes available for this slide.
+                  </div>
+                )}
+              </div>
+
+              {/* Slide Navigation in Notes Panel */}
+              <div className="mt-6 pt-4 border-t border-white/10">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={prevSlide}
+                    disabled={currentSlide === 0}
+                    className="flex-1 px-3 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-white/60 hover:text-white rounded-lg text-sm font-medium transition-all"
+                    title="Previous slide"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={nextSlide}
+                    disabled={currentSlide === totalSlides - 1}
+                    className="flex-1 px-3 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed text-white/60 hover:text-white rounded-lg text-sm font-medium transition-all"
+                    title="Next slide"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bookmark Manager */}
+        <BookmarkManager
+          bookmarks={bookmarks}
+          currentSlide={currentSlide}
+          totalSlides={totalSlides}
+          onNavigate={setCurrentSlide}
+          onUpdateNote={updateBookmarkNote}
+          onRemove={removeBookmark}
+          onClearAll={clearAllBookmarks}
+          onExport={exportBookmarks}
+          onImport={importBookmarks}
+          onClose={() => setShowBookmarkManager(false)}
+          show={showBookmarkManager}
+        />
+
+        {/* Bookmark Type Selector */}
+        {showBookmarkTypeSelector && (
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-[70] flex items-center justify-center">
+            <div className="bg-zinc-900 rounded-xl p-6 max-w-md">
+              <h3 className="text-white text-lg font-bold mb-4">Choose Bookmark Type</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => {
+                    addBookmark(currentSlide, 'star');
+                    setShowBookmarkTypeSelector(false);
+                  }}
+                  className="p-4 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/50 rounded-lg text-yellow-400 transition-all flex flex-col items-center gap-2"
+                >
+                  <StarIconSolid className="w-8 h-8" />
+                  <span className="text-sm font-medium">Star</span>
+                </button>
+                <button
+                  onClick={() => {
+                    addBookmark(currentSlide, 'flag');
+                    setShowBookmarkTypeSelector(false);
+                  }}
+                  className="p-4 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-400 transition-all flex flex-col items-center gap-2"
+                >
+                  <FlagIconSolid className="w-8 h-8" />
+                  <span className="text-sm font-medium">Flag</span>
+                </button>
+                <button
+                  onClick={() => {
+                    addBookmark(currentSlide, 'question');
+                    setShowBookmarkTypeSelector(false);
+                  }}
+                  className="p-4 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 rounded-lg text-blue-400 transition-all flex flex-col items-center gap-2"
+                >
+                  <QuestionIconSolid className="w-8 h-8" />
+                  <span className="text-sm font-medium">Question</span>
+                </button>
+                <button
+                  onClick={() => {
+                    addBookmark(currentSlide, 'important');
+                    setShowBookmarkTypeSelector(false);
+                  }}
+                  className="p-4 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-400 transition-all flex flex-col items-center gap-2"
+                >
+                  <SparklesIconSolid className="w-8 h-8" />
+                  <span className="text-sm font-medium">Important</span>
+                </button>
+              </div>
+              <button
+                onClick={() => setShowBookmarkTypeSelector(false)}
+                className="mt-4 w-full px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
           currentSlide={currentSlide}
           totalSlides={totalSlides}
           onNavigate={setCurrentSlide}
@@ -1173,6 +1352,9 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
             <span>{currentSlide + 1}</span>
             <span>/</span>
             <span>{totalSlides}</span>
+            {hasBookmark(currentSlide) && (
+              <BookmarkIconSolid className="w-3 h-3 text-cyan-400" title="Bookmarked" />
+            )}
           </div>
 
           {/* Center: Compact Navigation */}
