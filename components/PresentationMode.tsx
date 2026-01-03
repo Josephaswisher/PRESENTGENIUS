@@ -860,6 +860,7 @@ case ' ':
           } catch (e) {
             console.warn('Could not initialize progressive disclosure:', e);
           }
+            }
           } catch (e) {
             // Non-critical error, presentation can still work
             console.warn('Could not inject presentation styles:', e);
@@ -1288,6 +1289,12 @@ case ' ':
         {/* Mini-Map Navigation - Hierarchical heading navigation */}
         <MiniMapNavigation
           iframeRef={iframeRef}
+          currentSlide={currentSlide}
+          totalSlides={totalSlides}
+          onNavigate={(slideIndex) => setCurrentSlide(slideIndex)}
+          onClose={() => setShowMiniMap(false)}
+          show={showMiniMap}
+        />
 
         {/* Resizable Divider */}
         {showSplitScreen && (
@@ -1522,6 +1529,12 @@ case ' ':
 
             <button
               onClick={() => setShowQR(!showQR)}
+              className={`p-1.5 rounded transition-all ${
+                showQR ? 'bg-cyan-500/20 text-cyan-400' : 'text-white/40 hover:text-white/80'
+              }`}
+              title="QR (Q)"
+            >
+              <QrCodeIcon className="w-4 h-4" />
             </button>
 
             <button
@@ -1536,12 +1549,6 @@ case ' ':
               ) : (
                 <BookmarkIcon className="w-4 h-4" />
               )}
-              className={`p-1.5 rounded transition-all ${
-                showQR ? 'bg-cyan-500/20 text-cyan-400' : 'text-white/40 hover:text-white/80'
-              }`}
-              title="QR (Q)"
-            >
-              <QrCodeIcon className="w-4 h-4" />
             </button>
 
             <button
