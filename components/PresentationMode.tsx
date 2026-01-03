@@ -15,7 +15,15 @@ import {
   QrCodeIcon,
   SpeakerWaveIcon,
   ExclamationTriangleIcon,
+  BookmarkIcon,
 } from '@heroicons/react/24/outline';
+import {
+  BookmarkIcon as BookmarkIconSolid,
+  StarIcon as StarIconSolid,
+  FlagIcon as FlagIconSolid,
+  QuestionMarkCircleIcon as QuestionIconSolid,
+  SparklesIcon as SparklesIconSolid,
+} from '@heroicons/react/24/solid';
 import { QRCodeDisplay } from './QRCodeDisplay';
 import { ScrollHints } from './ScrollHints';
 import { ScrollProgressIndicator } from './ScrollProgressIndicator';
@@ -141,6 +149,9 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
   const [showSplitScreen, setShowSplitScreen] = useState(false);
   const [splitDividerPosition, setSplitDividerPosition] = useState(60); // percentage (60% slide, 40% notes)
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
+
+  // Transition type state
+  const [transitionType, setTransitionType] = useState<'fade' | 'slide' | 'zoom' | 'flip' | 'cube'>('fade');
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -282,16 +293,6 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-
-  // Load annotations when slide changes
-  useEffect(() => {
-    const loadAnnotations = async () => {
-      const strokes = await loadSlideAnnotations(presentationId, currentSlide);
-      setCurrentSlideStrokes(strokes);
-    };
-
-    loadAnnotations();
-  }, [presentationId, currentSlide]);
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
   }, []);
@@ -1124,7 +1125,6 @@ case ' ':
       };
     }
   }, [isDraggingDivider, handleDividerMouseMove, handleDividerMouseUp]);
-  }, [showDrawing]);
 
   // Track mouse for laser pointer
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -1160,14 +1160,6 @@ case ' ':
 
     if (slideNum) {
       const num = parseInt(slideNum) - 1;
-        {/* Slide Content Area */}
-        <div
-          className="relative overflow-hidden"
-          style={{
-            width: showSplitScreen ? `${splitDividerPosition}%` : '100%',
-            transition: isDraggingDivider ? 'none' : 'width 0.3s ease'
-          }}
-        >
       setCurrentSlide(num);
     }
   };
@@ -1226,7 +1218,7 @@ case ' ':
             transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
             transformOrigin: 'center center',
             transition: isPanning ? 'none' : 'transform 0.2s ease-out',
-            ...getScrollStyles({ enableMomentum: true, direction: 'vertical' })
+            ...getScrollStyles({ enableMomentum: true, direction: 'vertical' }) as React.CSSProperties
           }}
         />
 
@@ -1437,6 +1429,10 @@ case ' ':
             </div>
           </div>
         )}
+
+        {/* Mini-Map Navigation */}
+        <MiniMapNavigation
+          iframeRef={iframeRef}
           currentSlide={currentSlide}
           totalSlides={totalSlides}
           onNavigate={setCurrentSlide}
