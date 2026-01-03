@@ -104,6 +104,9 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
   // Scroll memory hook (sessionStorage - clears on tab close)
   const { saveScrollPosition, getScrollPosition } = useSlideScrollMemory('presentgenius-scroll');
 
+  // Per-slide zoom levels (persisted to localStorage)
+  const [slideZoomLevels, setSlideZoomLevels] = useState<{[key: number]: number}>({});
+
   const strictSandbox = import.meta.env.VITE_STRICT_IFRAME_SANDBOX !== 'false';
   const [sandboxPermissions, setSandboxPermissions] = useState<string>(
     strictSandbox ? 'allow-scripts' : 'allow-scripts allow-same-origin'
@@ -127,6 +130,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
         if (settings.autoAdvanceInterval) setAutoAdvanceInterval(settings.autoAdvanceInterval);
         if (settings.defaultTimerTarget) setTargetDuration(settings.defaultTimerTarget);
         if (typeof settings.showControlsOnStart === 'boolean') setShowControls(settings.showControlsOnStart);
+        if (settings.slideZoomLevels) setSlideZoomLevels(settings.slideZoomLevels);
       }
     } catch (error) {
       console.error('Failed to load presentation settings:', error);
@@ -141,12 +145,13 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
         autoAdvanceInterval,
         defaultTimerTarget: targetDuration,
         showControlsOnStart: showControls,
+        slideZoomLevels,
       };
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch (error) {
       console.error('Failed to save presentation settings:', error);
     }
-  }, [autoAdvanceInterval, targetDuration, showControls]);
+  }, [autoAdvanceInterval, targetDuration, showControls, slideZoomLevels]);
 
   // Listen for fullscreen changes
   useEffect(() => {
@@ -263,6 +268,24 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
     return atBottom;
   }, [currentSlide]);
 
+  // Zoom helper functions for per-slide content zoom
+  const adjustSlideZoom = useCallback((delta: number) => {
+    const currentZoom = slideZoomLevels[currentSlide] || 1;
+    const newZoom = Math.min(3, Math.max(0.5, currentZoom + delta));
+
+    setSlideZoomLevels(prev => ({
+      ...prev,
+      [currentSlide]: newZoom,
+    }));
+  }, [currentSlide, slideZoomLevels]);
+
+  const resetSlideZoom = useCallback(() => {
+    setSlideZoomLevels(prev => ({
+      ...prev,
+      [currentSlide]: 1,
+    }));
+  }, [currentSlide]);
+
   // Keyboard navigation - Enhanced with all shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -352,17 +375,20 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           break;
         case '+':
         case '=':
-          // Zoom in
-          setZoomLevel(prev => Math.min(prev + 0.25, 3));
+          // Zoom in (per-slide zoom)
+          e.preventDefault();
+          adjustSlideZoom(0.1);
           break;
         case '-':
         case '_':
-          // Zoom out
-          setZoomLevel(prev => Math.max(prev - 0.25, 1));
+          // Zoom out (per-slide zoom)
+          e.preventDefault();
+          adjustSlideZoom(-0.1);
           break;
         case '0':
-          // Reset zoom
-          setZoomLevel(1);
+          // Reset zoom to 100% (per-slide zoom)
+          e.preventDefault();
+          resetSlideZoom();
           setPanPosition({ x: 0, y: 0 });
           break;
         case 't':
@@ -407,6 +433,8 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
     scrollSlideToTop,
     scrollSlideToBottom,
     isSlideAtBottom,
+    adjustSlideZoom,
+    resetSlideZoom,
   ]);
 
   // Parse slides from HTML with safe iframe access and extract speaker notes
@@ -565,6 +593,31 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
       });
     }
   }, [currentSlide, getScrollPosition]);
+
+  // Apply per-slide zoom levels
+  useEffect(() => {
+    if (!iframeRef.current?.contentDocument) return;
+
+    const doc = iframeRef.current.contentDocument;
+    const slides = doc.querySelectorAll('[data-slide], .slide, section');
+
+    slides.forEach((slide, index) => {
+      if (slide instanceof HTMLElement) {
+        const zoom = slideZoomLevels[index] || 1;
+        slide.style.transform = `scale(${zoom})`;
+        slide.style.transformOrigin = 'top left';
+
+        // Adjust scroll width to account for zoom
+        if (zoom !== 1) {
+          slide.style.width = `${100 / zoom}%`;
+          slide.style.height = `${100 / zoom}vh`;
+        } else {
+          slide.style.width = '100%';
+          slide.style.height = '100vh';
+        }
+      }
+    });
+  }, [slideZoomLevels, currentSlide]);
 
   // Save scroll position (debounced) when user scrolls within a slide
   useEffect(() => {
