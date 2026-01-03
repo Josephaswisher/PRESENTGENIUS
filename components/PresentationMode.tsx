@@ -369,18 +369,46 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           e.preventDefault();
           nextSlide();
           break;
-        case ' ':
-          // Space: Scroll down OR next slide if at bottom
+case ' ':
+          // Space: Progressive disclosure reveal OR scroll down OR next slide if at bottom
           e.preventDefault();
           if (e.shiftKey) {
-            // Shift+Space: Scroll up
-            scrollSlideByViewport(-1);
-          } else {
-            // Check if at bottom of slide
-            if (isSlideAtBottom()) {
-              nextSlide();
+            // Shift+Space: Go back in progressive disclosure OR scroll up
+            if (progressiveDisclosureEnabled) {
+              const currentState = progressiveDisclosureStates[currentSlide];
+              if (currentState && !revealPrevious(currentState)) {
+                scrollSlideByViewport(-1);
+              } else if (currentState) {
+                setProgressiveDisclosureStates(states => ({
+                  ...states,
+                  [currentSlide]: currentState,
+                }));
+              }
             } else {
-              scrollSlideByViewport(1);
+              scrollSlideByViewport(-1);
+            }
+          } else {
+            // Space: Reveal next item in progressive disclosure OR scroll/next slide
+            if (progressiveDisclosureEnabled) {
+              const currentState = progressiveDisclosureStates[currentSlide];
+              if (currentState && !isFullyRevealed(currentState)) {
+                revealNext(currentState);
+                setProgressiveDisclosureStates(states => ({
+                  ...states,
+                  [currentSlide]: currentState,
+                }));
+              } else if (isSlideAtBottom()) {
+                nextSlide();
+              } else {
+                scrollSlideByViewport(1);
+              }
+            } else {
+              // Check if at bottom of slide
+              if (isSlideAtBottom()) {
+                nextSlide();
+              } else {
+                scrollSlideByViewport(1);
+              }
             }
           }
           break;
@@ -491,6 +519,41 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
         case 'S':
           // Toggle split-screen mode
           setShowSplitScreen(prev => !prev);
+        case 'r':
+        case 'R':
+          // Toggle progressive disclosure mode
+          e.preventDefault();
+          setProgressiveDisclosureEnabled(prev => {
+            const newEnabled = !prev;
+            
+            // Enable or disable progressive disclosure for current slide
+            const currentState = progressiveDisclosureStates[currentSlide];
+            if (currentState) {
+              if (newEnabled) {
+                enableProgressiveDisclosure(currentState);
+                setProgressiveDisclosureStates(states => ({
+                  ...states,
+                  [currentSlide]: currentState,
+                }));
+              } else {
+                disableProgressiveDisclosure(currentState);
+                setProgressiveDisclosureStates(states => ({
+                  ...states,
+                  [currentSlide]: currentState,
+                }));
+              }
+            }
+            
+            return newEnabled;
+          });
+          break;
+          break;
+        case 'v':
+        case 'V':
+          // Toggle PiP video (webcam mode)
+          e.preventDefault();
+          setShowPiPVideo(prev => !prev);
+          setEnableWebcam(true);
           break;
         case 'Home':
           e.preventDefault();
@@ -789,6 +852,24 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           } catch (e) {
             // Non-critical error, presentation can still work
             console.warn('Could not inject presentation styles:', e);
+          }
+
+          // Detect content type and apply context-aware backgrounds to all slides
+          try {
+            const backgroundData: {[key: number]: string} = {};
+            slides.forEach((slide, index) => {
+              const backgroundStyle = detectContentTypeAndBackground(slide);
+              backgroundData[index] = backgroundStyle;
+
+              // Apply background style immediately to slide element
+              if (slide instanceof HTMLElement) {
+                applyBackgroundStyle(slide, backgroundStyle);
+              }
+            });
+            setSlideBackgrounds(backgroundData);
+          } catch (e) {
+            console.warn('Could not apply context-aware backgrounds:', e);
+          }
           }
 
           // Clear any previous errors
@@ -1404,6 +1485,20 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
             <button
               onClick={() => setShowQR(!showQR)}
+            </button>
+
+            <button
+              onClick={() => setShowBookmarkManager(!showBookmarkManager)}
+              className={`p-1.5 rounded transition-all ${
+                showBookmarkManager ? 'bg-cyan-500/20 text-cyan-400' : 'text-white/40 hover:text-white/80'
+              }`}
+              title="Bookmarks (Shift+B)"
+            >
+              {hasBookmark(currentSlide) ? (
+                <BookmarkIconSolid className="w-4 h-4" />
+              ) : (
+                <BookmarkIcon className="w-4 h-4" />
+              )}
               className={`p-1.5 rounded transition-all ${
                 showQR ? 'bg-cyan-500/20 text-cyan-400' : 'text-white/40 hover:text-white/80'
               }`}
@@ -1479,7 +1574,11 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
           {/* Clear Button */}
           <button
-            onClick={clearCanvas}
+            onClick={() => {
+              if (canvasRef.current && (canvasRef.current as any).clearCanvas) {
+                (canvasRef.current as any).clearCanvas();
+              }
+            }}
             className="w-full px-3 py-2 bg-red-500/20 hover:bg-red-500/40 text-red-300 rounded-lg text-xs font-semibold transition-all"
           >
             Clear Drawing
