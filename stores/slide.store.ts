@@ -806,7 +806,6 @@ export const useSlideStore = create<SlideStoreState & SlideStoreActions>()(
 
       parseHtmlToSlides: (html) => {
         // Parse HTML content and convert to slide structure
-        // This is a placeholder - full implementation would parse the generated HTML
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
@@ -815,26 +814,51 @@ export const useSlideStore = create<SlideStoreState & SlideStoreActions>()(
 
         if (slideElements.length === 0) {
           // If no explicit slides, create one slide with the entire content
-          const { presentation } = get();
-          if (!presentation) {
-            get().initPresentation('Imported Presentation', 'Imported');
-          }
+          const bodyContent = doc.body;
+          const elements = parseElementsFromHtml(bodyContent);
+
+          const now = new Date();
+          const slide: Slide = {
+            id: uuidv4(),
+            order: 0,
+            title: doc.querySelector('h1, h2')?.textContent || 'Imported Slide',
+            elements,
+            speakerNotes: '',
+          };
+
+          set({
+            presentation: {
+              id: uuidv4(),
+              title: doc.querySelector('title')?.textContent || 'Imported Presentation',
+              slides: [slide],
+              theme: DEFAULT_THEME,
+              metadata: { topic: 'Imported' },
+              createdAt: now,
+              updatedAt: now,
+            },
+            currentSlideIndex: 0,
+          });
           return;
         }
 
-        const slides: Slide[] = Array.from(slideElements).map((el, i) => ({
-          id: uuidv4(),
-          order: i,
-          title: el.querySelector('h1, h2, .title')?.textContent || `Slide ${i + 1}`,
-          elements: [],  // Would need to parse elements from HTML
-          speakerNotes: '',
-        }));
+        const slides: Slide[] = Array.from(slideElements).map((el, i) => {
+          const title = el.querySelector('h1, h2, .title')?.textContent || `Slide ${i + 1}`;
+          const elements = parseElementsFromHtml(el as HTMLElement);
+
+          return {
+            id: uuidv4(),
+            order: i,
+            title,
+            elements,
+            speakerNotes: '',
+          };
+        });
 
         const now = new Date();
         set({
           presentation: {
             id: uuidv4(),
-            title: 'Imported Presentation',
+            title: doc.querySelector('title')?.textContent || 'Imported Presentation',
             slides,
             theme: DEFAULT_THEME,
             metadata: { topic: 'Imported' },
@@ -948,6 +972,187 @@ function createSlideFromTemplate(
     speakerNotes: '',
     background: template.defaultBackground,
   };
+}
+
+/**
+ * Parse HTML elements into SlideElement objects
+ * Extracts content from HTML and creates slide elements with default positioning
+ */
+function parseElementsFromHtml(container: HTMLElement): SlideElement[] {
+  const elements: SlideElement[] = [];
+  let currentY = 10; // Start position percentage
+
+  // Get all child elements in order
+  const children = Array.from(container.children);
+
+  for (const child of children) {
+    const tagName = child.tagName.toLowerCase();
+    const textContent = child.textContent?.trim() || '';
+
+    if (!textContent) continue; // Skip empty elements
+
+    let element: Omit<SlideElement, 'id'> | null = null;
+
+    switch (tagName) {
+      case 'h1':
+        element = {
+          type: 'heading',
+          content: textContent,
+          position: { x: 5, y: currentY, width: 90, height: 12 },
+          style: {
+            fontSize: '2.5rem',
+            fontWeight: 'bold',
+            textAlign: child.className.includes('center') ? 'center' : 'left',
+          },
+        };
+        currentY += 15;
+        break;
+
+      case 'h2':
+        element = {
+          type: 'subheading',
+          content: textContent,
+          position: { x: 5, y: currentY, width: 90, height: 10 },
+          style: {
+            fontSize: '1.875rem',
+            fontWeight: 'semibold',
+            textAlign: child.className.includes('center') ? 'center' : 'left',
+          },
+        };
+        currentY += 12;
+        break;
+
+      case 'h3':
+        element = {
+          type: 'subheading',
+          content: textContent,
+          position: { x: 5, y: currentY, width: 90, height: 8 },
+          style: {
+            fontSize: '1.5rem',
+            fontWeight: 'semibold',
+          },
+        };
+        currentY += 10;
+        break;
+
+      case 'p':
+        element = {
+          type: 'paragraph',
+          content: textContent,
+          position: { x: 5, y: currentY, width: 90, height: 8 },
+          style: {
+            fontSize: '1rem',
+          },
+        };
+        currentY += 10;
+        break;
+
+      case 'ul':
+        // Extract list items
+        const listItems = Array.from(child.querySelectorAll('li'))
+          .map((li) => li.textContent?.trim())
+          .filter(Boolean)
+          .join('\n');
+
+        if (listItems) {
+          element = {
+            type: 'bullet-list',
+            content: listItems,
+            position: { x: 5, y: currentY, width: 90, height: 15 },
+            style: {
+              fontSize: '1rem',
+            },
+          };
+          currentY += 18;
+        }
+        break;
+
+      case 'ol':
+        // Extract numbered list items
+        const numberedItems = Array.from(child.querySelectorAll('li'))
+          .map((li) => li.textContent?.trim())
+          .filter(Boolean)
+          .join('\n');
+
+        if (numberedItems) {
+          element = {
+            type: 'numbered-list',
+            content: numberedItems,
+            position: { x: 5, y: currentY, width: 90, height: 15 },
+            style: {
+              fontSize: '1rem',
+            },
+          };
+          currentY += 18;
+        }
+        break;
+
+      case 'img':
+        const imgSrc = child.getAttribute('src');
+        if (imgSrc) {
+          element = {
+            type: 'image',
+            content: imgSrc,
+            position: { x: 10, y: currentY, width: 80, height: 30 },
+          };
+          currentY += 35;
+        }
+        break;
+
+      case 'blockquote':
+        element = {
+          type: 'quote',
+          content: textContent,
+          position: { x: 10, y: currentY, width: 80, height: 12 },
+          style: {
+            fontSize: '1.25rem',
+            fontWeight: 'medium',
+            textAlign: 'center',
+          },
+        };
+        currentY += 15;
+        break;
+
+      case 'pre':
+      case 'code':
+        element = {
+          type: 'code-block',
+          content: textContent,
+          position: { x: 5, y: currentY, width: 90, height: 15 },
+          style: {
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '0.875rem',
+          },
+        };
+        currentY += 18;
+        break;
+
+      case 'hr':
+        element = {
+          type: 'divider',
+          content: '',
+          position: { x: 10, y: currentY, width: 80, height: 2 },
+        };
+        currentY += 5;
+        break;
+
+      default:
+        // For sections and divs, recursively parse children
+        if (tagName === 'section' || tagName === 'div') {
+          const childElements = parseElementsFromHtml(child as HTMLElement);
+          elements.push(...childElements);
+        }
+    }
+
+    if (element) {
+      elements.push({
+        ...element,
+        id: uuidv4(),
+      });
+    }
+  }
+
+  return elements;
 }
 
 function elementToHtml(element: SlideElement): string {
