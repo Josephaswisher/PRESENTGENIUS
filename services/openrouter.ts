@@ -1,237 +1,125 @@
 /**
- * OpenRouter AI Service
- * Provides access to multiple AI models through a unified API
- * Supports: GPT-4, Claude, Llama, Mistral, and many more
+ * OpenRouter Service
+ * Provides default DeepSeek models via OpenRouter gateway
  */
+import { classifyOpenRouterError } from './api-key-validation';
+
+export type OpenRouterModelTier = 'fast' | 'standard' | 'premium';
 
 export interface OpenRouterModel {
   id: string;
   name: string;
-  description: string;
-  contextLength: number;
-  pricing: { prompt: number; completion: number };
+  tier: OpenRouterModelTier;
+  description?: string;
+  maxTokens?: number;
 }
 
-// Popular models available through OpenRouter (Updated Jan 2025)
-export const OPENROUTER_MODELS = {
-  // OpenAI
-  'openai/gpt-4o': { name: 'GPT-4o', icon: '🟢', tier: 'premium' },
-  'openai/gpt-4o-mini': { name: 'GPT-4o Mini', icon: '🟢', tier: 'fast' },
-  'openai/o1': { name: 'o1', icon: '🟢', tier: 'premium' },
-  'openai/o1-mini': { name: 'o1 Mini', icon: '🟢', tier: 'standard' },
-
-  // Anthropic Claude 4 (Latest)
-  'anthropic/claude-opus-4-20250514': { name: 'Claude Opus 4', icon: '🟠', tier: 'premium' },
-  'anthropic/claude-sonnet-4-20250514': { name: 'Claude Sonnet 4', icon: '🟠', tier: 'premium' },
-  'anthropic/claude-3.5-sonnet': { name: 'Claude 3.5 Sonnet', icon: '🟠', tier: 'standard' },
-  'anthropic/claude-3.5-haiku': { name: 'Claude 3.5 Haiku', icon: '🟠', tier: 'fast' },
-
-  // Meta Llama
-  'meta-llama/llama-3.3-70b-instruct': { name: 'Llama 3.3 70B', icon: '🦙', tier: 'standard' },
-  'meta-llama/llama-3.1-405b-instruct': { name: 'Llama 3.1 405B', icon: '🦙', tier: 'premium' },
-  'meta-llama/llama-3.1-8b-instruct': { name: 'Llama 3.1 8B', icon: '🦙', tier: 'fast' },
-
-  // Google
-  'google/gemini-2.0-flash-001': { name: 'Gemini 2.0 Flash', icon: '💎', tier: 'premium' },
-  'google/gemini-2.5-pro-preview': { name: 'Gemini 2.5 Pro', icon: '💎', tier: 'premium' },
-  'google/gemma-2-27b-it': { name: 'Gemma 2 27B', icon: '💎', tier: 'standard' },
-
-  // DeepSeek (V3 via deepseek-chat: $0.30/$1.20 per 1M tokens - cheapest quality model)
-  'deepseek/deepseek-chat': { name: 'DeepSeek V3', icon: '🔵', tier: 'fast' },
-  'deepseek/deepseek-r1': { name: 'DeepSeek R1', icon: '🔵', tier: 'premium' },
-
-  // Qwen
-  'qwen/qwen-2.5-72b-instruct': { name: 'Qwen 2.5 72B', icon: '🟣', tier: 'standard' },
-} as const;
-
-export type OpenRouterModelId = keyof typeof OPENROUTER_MODELS;
-
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-
-interface FileInput {
+export interface FileInput {
   base64: string;
   mimeType: string;
 }
 
-interface GenerationOptions {
-  activityId?: string;
-  learnerLevel?: string;
+export const OPENROUTER_MODELS: Record<string, OpenRouterModel> = {
+  'deepseek/deepseek-chat': {
+    id: 'deepseek/deepseek-chat',
+    name: 'DeepSeek V3',
+    tier: 'fast',
+    description: 'Default medical educator model via OpenRouter',
+    maxTokens: 64000,
+  },
+  'deepseek/deepseek-r1': {
+    id: 'deepseek/deepseek-r1',
+    name: 'DeepSeek R1',
+    tier: 'premium',
+    description: 'Reasoning-focused model',
+    maxTokens: 64000,
+  },
+  'anthropic/claude-sonnet-4-20250514': {
+    id: 'anthropic/claude-sonnet-4-20250514',
+    name: 'Claude Sonnet 4.0',
+    tier: 'standard',
+    description: 'Anthropic Claude Sonnet via OpenRouter',
+    maxTokens: 200000,
+  },
+};
+
+export type OpenRouterModelId = keyof typeof OPENROUTER_MODELS;
+
+const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
+const DEFAULT_MODEL_ID: OpenRouterModelId = 'deepseek/deepseek-chat';
+
+function buildSystemPrompt(): string {
+  return [
+    'You are an expert medical educator and presentation designer.',
+    'Create concise, evidence-based HTML presentations with modern layouts.',
+    'Always ensure content is safe for educational use and avoids PHI.'
+  ].join(' ');
 }
 
-function getApiKey(): string {
-  const key = import.meta.env.VITE_OPENROUTER_API_KEY;
-  if (!key) {
-    throw new Error('VITE_OPENROUTER_API_KEY is not set in environment variables');
-  }
-  return key;
+function buildRequestBody(prompt: string, model: OpenRouterModelId): any {
+  return {
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: buildSystemPrompt(),
+      },
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+    temperature: 0.7,
+  };
 }
 
-/**
- * Generate content using OpenRouter API
- */
 export async function generateWithOpenRouter(
   prompt: string,
-  modelId: OpenRouterModelId = 'deepseek/deepseek-chat',
-  files: FileInput[] = [],
-  options: GenerationOptions = {}
+  modelId: OpenRouterModelId = DEFAULT_MODEL_ID,
+  _files: FileInput[] = []
 ): Promise<string> {
-  const apiKey = getApiKey();
+  const body = buildRequestBody(prompt, modelId);
+  const apiKey = (import.meta as any)?.env?.VITE_OPENROUTER_API_KEY || (import.meta as any)?.env?.openrouter_api_key;
 
-  // Build messages array
-  const messages: any[] = [];
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Title': 'PresentGenius Medical Education',
+  };
 
-  // Add system message for medical education context
-  const systemMessage = `You are an expert medical educator creating interactive HTML presentations.
-Your output should be a complete, self-contained HTML document with embedded CSS and JavaScript.
-Use Tailwind CSS via CDN for styling. Make the content visually engaging and interactive.
-Focus on clarity, medical accuracy, and educational value.
-${options.learnerLevel ? `Target audience: ${options.learnerLevel}` : ''}
-${options.activityId ? `Activity type: ${options.activityId}` : ''}`;
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
 
-  messages.push({ role: 'system', content: systemMessage });
+  try {
+    const response = await fetch(OPENROUTER_ENDPOINT, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
 
-  // Handle images if provided (for vision-capable models)
-  if (files.length > 0) {
-    const content: any[] = [{ type: 'text', text: prompt }];
-
-    for (const file of files) {
-      if (file.mimeType.startsWith('image/')) {
-        content.push({
-          type: 'image_url',
-          image_url: {
-            url: `data:${file.mimeType};base64,${file.base64}`,
-          },
-        });
-      }
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => undefined);
+      const message = errorPayload?.error?.message || response.statusText || 'Unknown error';
+      throw new Error(`OpenRouter API error: ${message}`);
     }
 
-    messages.push({ role: 'user', content });
-  } else {
-    messages.push({ role: 'user', content: prompt });
+    const json = await response.json();
+    const content = json?.choices?.[0]?.message?.content;
+    if (typeof content === 'string') {
+      return content;
+    }
+    throw new Error('OpenRouter API error: Invalid response format');
+  } catch (error: any) {
+    if (error?.message?.includes('OpenRouter API error')) {
+      throw error;
+    }
+    const classified = classifyOpenRouterError(error);
+    console.error('Failed to generate with OpenRouter:', classified.message);
+    throw new Error(classified.message);
   }
-
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': window.location.origin,
-      'X-Title': 'PresentGenius Medical Education',
-    },
-    body: JSON.stringify({
-      model: modelId,
-      messages,
-      max_tokens: 16000,
-      temperature: 0.7,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(`OpenRouter API error: ${error.error?.message || response.statusText}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '';
-
-  // Extract HTML if wrapped in code blocks
-  const htmlMatch = content.match(/```html\n?([\s\S]*?)```/) ||
-    content.match(/<!DOCTYPE[\s\S]*<\/html>/i);
-
-  return htmlMatch ? (htmlMatch[1] || htmlMatch[0]).trim() : content;
 }
 
-/**
- * Refine existing content using OpenRouter
- */
-export async function refineWithOpenRouter(
-  currentHtml: string,
-  instruction: string,
-  modelId: OpenRouterModelId = 'deepseek/deepseek-chat'
-): Promise<string> {
-  const apiKey = getApiKey();
-
-  const messages = [
-    {
-      role: 'system',
-      content: `You are an expert at refining HTML medical education content.
-Modify the provided HTML according to the user's instructions.
-Maintain the existing structure and styling unless specifically asked to change it.
-Return the complete modified HTML document.`,
-    },
-    {
-      role: 'user',
-      content: `Current HTML:\n\n${currentHtml}\n\n---\n\nInstructions: ${instruction}\n\nReturn the updated HTML:`,
-    },
-  ];
-
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': window.location.origin,
-      'X-Title': 'PresentGenius Medical Education',
-    },
-    body: JSON.stringify({
-      model: modelId,
-      messages,
-      max_tokens: 16000,
-      temperature: 0.5,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(`OpenRouter API error: ${error.error?.message || response.statusText}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '';
-
-  // Extract HTML
-  const htmlMatch = content.match(/```html\n?([\s\S]*?)```/) ||
-    content.match(/<!DOCTYPE[\s\S]*<\/html>/i);
-
-  return htmlMatch ? (htmlMatch[1] || htmlMatch[0]).trim() : content;
-}
-
-/**
- * Wrapper for bringToLife compatibility
- */
-export async function bringToLife(
-  prompt: string,
-  files: FileInput[] = [],
-  options: GenerationOptions & { model?: OpenRouterModelId } = {}
-): Promise<string> {
-  const model = options.model || 'deepseek/deepseek-chat';
-  return generateWithOpenRouter(prompt, model, files, options);
-}
-
-/**
- * Wrapper for refineArtifact compatibility
- */
-export async function refineArtifact(
-  currentHtml: string,
-  instruction: string,
-  model: OpenRouterModelId = 'deepseek/deepseek-chat'
-): Promise<string> {
-  return refineWithOpenRouter(currentHtml, instruction, model);
-}
-
-/**
- * Get list of available models
- */
-export function getAvailableModels(): { id: OpenRouterModelId; name: string; icon: string; tier: string }[] {
-  return Object.entries(OPENROUTER_MODELS).map(([id, info]) => ({
-    id: id as OpenRouterModelId,
-    ...info,
-  }));
-}
-
-/**
- * Check if OpenRouter is configured
- */
-export function isOpenRouterConfigured(): boolean {
-  return !!import.meta.env.VITE_OPENROUTER_API_KEY;
-}
+export default {
+  OPENROUTER_MODELS,
+  generateWithOpenRouter,
+};

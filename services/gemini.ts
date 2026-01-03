@@ -48,7 +48,8 @@ CORE DIRECTIVES:
 
 4. **Self-Contained & Professional**:
     - The output must be a single HTML file with embedded CSS (<style>) and JavaScript (<script>).
-    - Use **Tailwind CSS** via CDN: <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    - **Tailwind CSS**: Include compiled Tailwind styles in <style> tags or link to the compiled CSS file.
+    - Do NOT use cdn.tailwindcss.com in production - it should only be used in development.
     - **Design Aesthetic**: Clean, modern, medical-grade UI. Use consistent color palettes.
 
     MEDICAL COLOR SYSTEM:
@@ -107,13 +108,15 @@ export interface FileInput {
 export interface GenerationOptions {
   activityId?: string;
   learnerLevel?: LearnerLevel;
+  modelId?: string;
+  onProgress?: (partialContent: string) => void;
 }
 
 /**
- * Generate an interactive medical education artifact
+ * Generate an interactive medical education artifact with streaming support
  * @param prompt User's context/instructions
  * @param files Uploaded files (images, PDFs)
- * @param options Activity type and learner level options
+ * @param options Activity type, learner level, and progress callback
  */
 export async function bringToLife(
   prompt: string,
@@ -161,21 +164,43 @@ export async function bringToLife(
   const systemInstruction = buildSystemInstruction(activityId, learnerLevel);
 
   try {
-    const response: GenerateContentResponse = await getAI().models.generateContent({
-      model: GEMINI_MODEL,
-      contents: {
-        parts: parts
-      },
-      config: {
-        systemInstruction: systemInstruction,
-        temperature: 0.4,
-      },
-    });
+    // Use streaming if callback provided, otherwise use standard generation
+    if (options.onProgress) {
+      let accumulatedText = '';
 
-    let text = response.text || "<!-- Failed to generate content -->";
-    text = text.replace(/^```html\s*/, '').replace(/^```\s*/, '').replace(/```$/, '');
+      const stream = await getAI().models.streamGenerateContent({
+        model: GEMINI_MODEL,
+        contents: { parts },
+        config: {
+          systemInstruction: systemInstruction,
+          temperature: 0.4,
+        },
+      });
 
-    return text;
+      for await (const chunk of stream) {
+        const chunkText = chunk.text || '';
+        accumulatedText += chunkText;
+        options.onProgress(accumulatedText);
+      }
+
+      let text = accumulatedText || "<!-- Failed to generate content -->";
+      text = text.replace(/^```html\s*/, '').replace(/^```\s*/, '').replace(/```$/, '');
+      return text;
+    } else {
+      // Non-streaming fallback
+      const response: GenerateContentResponse = await getAI().models.generateContent({
+        model: GEMINI_MODEL,
+        contents: { parts },
+        config: {
+          systemInstruction: systemInstruction,
+          temperature: 0.4,
+        },
+      });
+
+      let text = response.text || "<!-- Failed to generate content -->";
+      text = text.replace(/^```html\s*/, '').replace(/^```\s*/, '').replace(/```$/, '');
+      return text;
+    }
   } catch (error) {
     console.error("Gemini Generation Error:", error);
     throw error;

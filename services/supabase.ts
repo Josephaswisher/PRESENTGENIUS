@@ -1,26 +1,21 @@
 /**
  * Supabase Client & Database Operations
  * Handles presentation storage, prompt history, and caching
+ *
+ * DEPRECATED: Use supabase from lib/supabase/client instead
+ * This module re-exports the shared client to prevent multiple instances
  */
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import supabase, { isSupabaseConfigured as isConfigured } from '../lib/supabase/client';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-let supabase: SupabaseClient | null = null;
-
-export function getSupabase(): SupabaseClient {
+export function getSupabase() {
   if (!supabase) {
-    if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error('Supabase credentials not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local');
-    }
-    supabase = createClient(supabaseUrl, supabaseAnonKey);
+    throw new Error('Supabase credentials not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local');
   }
   return supabase;
 }
 
 export function isSupabaseConfigured(): boolean {
-  return !!(supabaseUrl && supabaseAnonKey);
+  return isConfigured();
 }
 
 // Types

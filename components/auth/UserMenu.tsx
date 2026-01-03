@@ -48,25 +48,22 @@ export const UserMenu: React.FC = () => {
     );
   }
 
-  // Not logged in
+  // Not logged in - just show a simple indicator, no sign-in required
   if (!user) {
     return (
-      <button
-        onClick={openAuthModal}
-        className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg transition-colors"
-      >
+      <div className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-500">
         {isSupabaseConfigured() ? (
           <>
-            <CloudArrowUpIcon className="w-4 h-4" />
-            Sign in to save
+            <div className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="hidden sm:inline">Auto-saving</span>
           </>
         ) : (
           <>
-            <CloudIcon className="w-4 h-4 text-zinc-500" />
-            Local mode
+            <CloudIcon className="w-4 h-4" />
+            <span className="hidden sm:inline">Local</span>
           </>
         )}
-      </button>
+      </div>
     );
   }
 

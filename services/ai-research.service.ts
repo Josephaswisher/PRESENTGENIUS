@@ -4,6 +4,8 @@
  * Note: Perplexity is accessed via MCP tools in Claude Code environment
  */
 
+import { escapeHtml, sanitizeUrl } from '../utils/sanitization';
+
 export interface ResearchResult {
   query: string;
   summary: string;
@@ -189,16 +191,18 @@ export function createEvidenceBadge(result: ResearchResult): EvidenceBadge {
  */
 export function formatAMACitation(source: ResearchSource, index: number): string {
   const year = new Date().getFullYear();
+  const safeTitle = escapeHtml(source.title || 'Source');
+  const safeUrl = sanitizeUrl(source.url) || '';
 
   switch (source.type) {
     case 'pubmed':
-      return `${index}. PubMed: ${source.title}. Accessed ${year}. ${source.url}`;
+      return `${index}. PubMed: ${safeTitle}. Accessed ${year}. ${safeUrl}`.trim();
     case 'guideline':
-      return `${index}. ${source.title}. Clinical Practice Guideline. ${year}. ${source.url}`;
+      return `${index}. ${safeTitle}. Clinical Practice Guideline. ${year}. ${safeUrl}`.trim();
     case 'uptodate':
-      return `${index}. UpToDate: ${source.title}. Accessed ${year}. ${source.url}`;
+      return `${index}. UpToDate: ${safeTitle}. Accessed ${year}. ${safeUrl}`.trim();
     default:
-      return `${index}. ${source.title}. ${source.url}`;
+      return `${index}. ${safeTitle}. ${safeUrl}`.trim();
   }
 }
 

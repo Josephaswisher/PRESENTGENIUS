@@ -31,7 +31,6 @@ describe('Environment Validator', () => {
     const validator = await import('../lib/env-validator');
 
     // These are mocked in vitest.config.ts
-    expect(validator.isProviderConfigured('openrouter')).toBe(true);
     expect(validator.isProviderConfigured('gemini')).toBe(true);
   });
 });

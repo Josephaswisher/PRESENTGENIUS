@@ -15,8 +15,7 @@ import {
   PhotoIcon,
   PlusIcon,
 } from '@heroicons/react/24/outline';
-import { AIProvider, PROVIDERS } from '../services/ai-provider';
-import { GenerationOptions } from '../services/gemini';
+import { AIProvider, PROVIDERS, GenerationOptions } from '../services/ai-provider';
 
 interface LectureBuilderProps {
   onGenerate: (prompt: string, files: File[], options: GenerationOptions, provider?: AIProvider) => void;
@@ -61,7 +60,7 @@ export const LectureBuilder: React.FC<LectureBuilderProps> = ({
   const [files, setFiles] = useState<File[]>([]);
   const [audience, setAudience] = useState('residents');
   const [duration, setDuration] = useState(30);
-  const [provider, setProvider] = useState<AIProvider>('gemini');
+  const [provider, setProvider] = useState<AIProvider>('openrouter');
   const [showOptions, setShowOptions] = useState(false);
   const [slideCount, setSlideCount] = useState<number | ''>('');
   

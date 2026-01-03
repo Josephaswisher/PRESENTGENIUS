@@ -114,6 +114,26 @@ export const BOARD_MCQ_TEMPLATE = `
   let selectedOption = null;
   const correctAnswer = 'B';
 
+  // Toast notification function
+  function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = \`fixed top-4 right-4 z-[9999] flex items-start gap-3 p-4 rounded-xl border backdrop-blur-xl shadow-lg shadow-black/20 animate-in slide-in-from-right-full max-w-md \${
+      type === 'error' ? 'border-red-500/30 bg-red-500/10' :
+      type === 'success' ? 'border-green-500/30 bg-green-500/10' :
+      'border-blue-500/30 bg-blue-500/10'
+    }\`;
+    toast.innerHTML = \`
+      <span class="text-2xl">\${type === 'error' ? '⚠️' : type === 'success' ? '✅' : 'ℹ️'}</span>
+      <div class="flex-1 text-sm text-slate-100 leading-relaxed">\${message}</div>
+    \`;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(100%)';
+      setTimeout(() => toast.remove(), 300);
+    }, 4000);
+  }
+
   function selectOption(element, isCorrect) {
     // Remove previous selection
     document.querySelectorAll('.quiz-option').forEach(opt => {
@@ -127,7 +147,7 @@ export const BOARD_MCQ_TEMPLATE = `
 
   function revealAnswer() {
     if (!selectedOption) {
-      alert('Please select an answer first');
+      showToast('Please select an answer first', 'error');
       return;
     }
 

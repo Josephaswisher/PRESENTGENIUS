@@ -685,13 +685,22 @@ export const useSlideStore = create<SlideStoreState & SlideStoreActions>()(
         const { presentation, history, historyIndex } = get();
         if (!presentation) return;
 
-        // Remove any redo history after current index
         const newHistory = history.slice(0, historyIndex + 1);
 
-        // Add current state (deep clone)
+        const serialize = (payload: Presentation) => {
+          const { createdAt, updatedAt, ...rest } = payload;
+          return JSON.stringify(rest);
+        };
+
+        const lastSnapshot = newHistory.length > 0 ? serialize(newHistory[newHistory.length - 1]) : null;
+        const currentSnapshot = serialize(presentation);
+
+        if (lastSnapshot === currentSnapshot) {
+          return;
+        }
+
         newHistory.push(JSON.parse(JSON.stringify(presentation)));
 
-        // Limit history size
         if (newHistory.length > 50) {
           newHistory.shift();
         }
@@ -805,18 +814,56 @@ export const useSlideStore = create<SlideStoreState & SlideStoreActions>()(
       // ========================================
 
       parseHtmlToSlides: (html) => {
-        // Parse HTML content and convert to slide structure
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
-        // Find slide sections (implementation depends on HTML structure)
-        const slideElements = doc.querySelectorAll('.slide, section, [data-slide]');
+        // Try multiple strategies to find slide sections
+        let slideElements: HTMLElement[] = [];
+        const explicitSlides = doc.querySelectorAll('[data-slide-id], .slide, [data-slide]');
+        if (explicitSlides.length > 0) {
+          slideElements = Array.from(explicitSlides) as HTMLElement[];
+        }
 
         if (slideElements.length === 0) {
-          // If no explicit slides, create one slide with the entire content
-          const bodyContent = doc.body;
-          const elements = parseElementsFromHtml(bodyContent);
+          const articles = doc.querySelectorAll('article, section');
+          if (articles.length > 0) {
+            slideElements = Array.from(articles) as HTMLElement[];
+          }
+        }
 
+        if (slideElements.length === 0) {
+          const potentialSlides = Array.from(doc.querySelectorAll('div')).filter((div) => {
+            const directHeading = Array.from(div.children).some(
+              (child) => child.tagName === 'H1' || child.tagName === 'H2'
+            );
+            const hasContent = (div.textContent?.trim().length || 0) > 50;
+            return directHeading && hasContent;
+          });
+          if (potentialSlides.length > 0) {
+            slideElements = potentialSlides as HTMLElement[];
+          }
+        }
+
+        if (slideElements.length === 0) {
+          const headings = doc.querySelectorAll('h1, h2');
+          if (headings.length > 1) {
+            slideElements = [] as HTMLElement[];
+            headings.forEach((heading) => {
+              const wrapper = doc.createElement('section');
+              wrapper.appendChild(heading.cloneNode(true));
+              let sibling = heading.nextElementSibling;
+              while (sibling && !['H1', 'H2'].includes(sibling.tagName)) {
+                wrapper.appendChild(sibling.cloneNode(true));
+                sibling = sibling.nextElementSibling;
+              }
+              slideElements.push(wrapper as HTMLElement);
+            });
+          }
+        }
+
+        if (slideElements.length === 0) {
+          const bodyContent = doc.body;
+          const elements = parseElementsFromHtml(bodyContent as HTMLElement);
           const now = new Date();
           const slide: Slide = {
             id: uuidv4(),
@@ -824,6 +871,7 @@ export const useSlideStore = create<SlideStoreState & SlideStoreActions>()(
             title: doc.querySelector('h1, h2')?.textContent || 'Imported Slide',
             elements,
             speakerNotes: '',
+            background: parseSlideBackground(bodyContent as HTMLElement),
           };
 
           set({
@@ -841,16 +889,17 @@ export const useSlideStore = create<SlideStoreState & SlideStoreActions>()(
           return;
         }
 
-        const slides: Slide[] = Array.from(slideElements).map((el, i) => {
-          const title = el.querySelector('h1, h2, .title')?.textContent || `Slide ${i + 1}`;
-          const elements = parseElementsFromHtml(el as HTMLElement);
+        const slides: Slide[] = slideElements.map((el, i) => {
+          const title = el.getAttribute('data-title') || el.querySelector('h1, h2, .title')?.textContent || `Slide ${i + 1}`;
+          const elements = parseElementsFromHtml(el);
 
           return {
             id: uuidv4(),
             order: i,
             title,
             elements,
-            speakerNotes: '',
+            speakerNotes: el.querySelector('aside.notes')?.textContent?.trim() || '',
+            background: parseSlideBackground(el),
           };
         });
 
@@ -873,42 +922,63 @@ export const useSlideStore = create<SlideStoreState & SlideStoreActions>()(
         const { presentation } = get();
         if (!presentation) return '';
 
-        // Generate HTML from slides
-        // This would need to match the expected output format
+        const theme = presentation.theme || DEFAULT_THEME;
+        const baseStyles = `
+:root {
+  --primary: ${theme.colors.primary};
+  --secondary: ${theme.colors.secondary};
+  --accent: ${theme.colors.accent};
+  --background: ${theme.colors.background};
+  --text: ${theme.colors.text};
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--background);
+  color: var(--text);
+  font-family: ${theme.typography.bodyFont};
+}
+.slide {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  padding: ${theme.spacing?.contentPadding || '2rem'};
+  overflow: hidden;
+}
+.slide-element {
+  position: absolute;
+  word-break: break-word;
+}
+.slide img { max-width: 100%; max-height: 100%; }
+`; 
+
         const slidesHtml = presentation.slides
-          .map(
-            (slide) => `
-          <section class="slide" data-slide-id="${slide.id}">
-            <h2>${slide.title}</h2>
-            ${slide.elements.map((el) => elementToHtml(el)).join('\n')}
-          </section>
-        `
-          )
+          .map((slide) => {
+            const backgroundStyle = getSlideBackgroundStyle(slide);
+            const elementsHtml = slide.elements.map((el) => elementToHtml(el, theme)).join('\n');
+            const notes = slide.speakerNotes
+              ? `<aside class="notes">${escapeHtml(slide.speakerNotes)}</aside>`
+              : '';
+
+            return `
+  <section class="slide" data-slide-id="${slide.id}" data-slide-index="${slide.order}"${backgroundStyle ? ` style="${backgroundStyle}"` : ''}>
+    ${elementsHtml}
+    ${notes}
+  </section>`;
+          })
           .join('\n');
 
-        return `
-<!DOCTYPE html>
+        return `<!DOCTYPE html>
 <html>
 <head>
   <title>${presentation.title}</title>
-  <style>
-    :root {
-      --primary: ${presentation.theme.colors.primary};
-      --background: ${presentation.theme.colors.background};
-      --text: ${presentation.theme.colors.text};
-    }
-    body {
-      font-family: ${presentation.theme.typography.bodyFont};
-      background: var(--background);
-      color: var(--text);
-    }
-  </style>
+  <style>${baseStyles}</style>
 </head>
 <body>
-  ${slidesHtml}
+${slidesHtml}
 </body>
-</html>
-        `.trim();
+</html>`;
       },
     }),
     {
@@ -925,6 +995,7 @@ export const useSlideStore = create<SlideStoreState & SlideStoreActions>()(
     }
   )
 );
+
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -974,15 +1045,85 @@ function createSlideFromTemplate(
   };
 }
 
-/**
- * Parse HTML elements into SlideElement objects
- * Extracts content from HTML and creates slide elements with default positioning
- */
+function parseSlideBackground(container: HTMLElement): SlideBackground | undefined {
+  const bgData = (container.getAttribute('data-background') || '').trim();
+  const styleBackground = container.style.background || container.style.backgroundImage || '';
+  const backgroundValue = bgData || styleBackground;
+
+  if (!backgroundValue) return undefined;
+
+  if (backgroundValue.includes('gradient')) {
+    return { type: 'gradient', value: backgroundValue };
+  }
+
+  if (backgroundValue.includes('url(')) {
+    return { type: 'image', value: backgroundValue };
+  }
+
+  return { type: 'solid', value: backgroundValue } as SlideBackground;
+}
+
 function parseElementsFromHtml(container: HTMLElement): SlideElement[] {
   const elements: SlideElement[] = [];
-  let currentY = 10; // Start position percentage
+  let currentY = 10; // fallback positioning
 
-  // Get all child elements in order
+  // Prefer structured data attributes if present
+  const structured = Array.from(
+    container.querySelectorAll('[data-element-id], .slide-element')
+  ) as HTMLElement[];
+
+  if (structured.length > 0) {
+    structured.forEach((node) => {
+      const type = (node.dataset.elementType as SlideElement['type']) || 'paragraph';
+      const posData = node.dataset.pos?.split(',').map((v) => parseFloat(v)) || [];
+      const position = posData.length === 4
+        ? { x: posData[0], y: posData[1], width: posData[2], height: posData[3] }
+        : {
+            x: parseFloat(node.style.left) || 0,
+            y: parseFloat(node.style.top) || 0,
+            width: parseFloat(node.style.width) || 90,
+            height: parseFloat(node.style.height) || 10,
+          };
+
+      const style = {
+        fontSize: node.style.fontSize || undefined,
+        fontWeight: (node.style.fontWeight as ElementStyle['fontWeight']) || undefined,
+        fontFamily: node.style.fontFamily || undefined,
+        color: node.style.color || undefined,
+        backgroundColor: node.style.backgroundColor || undefined,
+        textAlign: (node.style.textAlign as ElementStyle['textAlign']) || undefined,
+        padding: node.style.padding || undefined,
+        borderRadius: node.style.borderRadius || undefined,
+        opacity: node.style.opacity ? Number(node.style.opacity) : undefined,
+      };
+
+      let content = '';
+      if (type === 'bullet-list' || type === 'numbered-list') {
+        const items = Array.from(node.querySelectorAll('li')).map((li) => li.textContent?.trim()).filter(Boolean) as string[];
+        content = items.join('\n');
+      } else if (type === 'image') {
+        const img = node.querySelector('img');
+        content = img?.getAttribute('src') || node.getAttribute('data-src') || '';
+      } else if (type === 'code-block') {
+        const code = node.querySelector('code');
+        content = code?.textContent || node.textContent || '';
+      } else {
+        content = node.textContent?.trim() || '';
+      }
+
+      elements.push({
+        id: node.dataset.elementId || uuidv4(),
+        type,
+        content,
+        position,
+        style,
+      });
+    });
+
+    return elements;
+  }
+
+  // Fallback parsing for generic HTML
   const children = Array.from(container.children);
 
   for (const child of children) {
@@ -1002,7 +1143,7 @@ function parseElementsFromHtml(container: HTMLElement): SlideElement[] {
           style: {
             fontSize: '2.5rem',
             fontWeight: 'bold',
-            textAlign: child.className.includes('center') ? 'center' : 'left',
+            textAlign: (child as HTMLElement).style.textAlign as any || 'left',
           },
         };
         currentY += 15;
@@ -1016,7 +1157,7 @@ function parseElementsFromHtml(container: HTMLElement): SlideElement[] {
           style: {
             fontSize: '1.875rem',
             fontWeight: 'semibold',
-            textAlign: child.className.includes('center') ? 'center' : 'left',
+            textAlign: (child as HTMLElement).style.textAlign as any || 'left',
           },
         };
         currentY += 12;
@@ -1047,8 +1188,7 @@ function parseElementsFromHtml(container: HTMLElement): SlideElement[] {
         currentY += 10;
         break;
 
-      case 'ul':
-        // Extract list items
+      case 'ul': {
         const listItems = Array.from(child.querySelectorAll('li'))
           .map((li) => li.textContent?.trim())
           .filter(Boolean)
@@ -1066,9 +1206,9 @@ function parseElementsFromHtml(container: HTMLElement): SlideElement[] {
           currentY += 18;
         }
         break;
+      }
 
-      case 'ol':
-        // Extract numbered list items
+      case 'ol': {
         const numberedItems = Array.from(child.querySelectorAll('li'))
           .map((li) => li.textContent?.trim())
           .filter(Boolean)
@@ -1086,9 +1226,10 @@ function parseElementsFromHtml(container: HTMLElement): SlideElement[] {
           currentY += 18;
         }
         break;
+      }
 
-      case 'img':
-        const imgSrc = child.getAttribute('src');
+      case 'img': {
+        const imgSrc = (child as HTMLImageElement).getAttribute('src');
         if (imgSrc) {
           element = {
             type: 'image',
@@ -1098,6 +1239,7 @@ function parseElementsFromHtml(container: HTMLElement): SlideElement[] {
           currentY += 35;
         }
         break;
+      }
 
       case 'blockquote':
         element = {
@@ -1137,7 +1279,6 @@ function parseElementsFromHtml(container: HTMLElement): SlideElement[] {
         break;
 
       default:
-        // For sections and divs, recursively parse children
         if (tagName === 'section' || tagName === 'div') {
           const childElements = parseElementsFromHtml(child as HTMLElement);
           elements.push(...childElements);
@@ -1155,24 +1296,80 @@ function parseElementsFromHtml(container: HTMLElement): SlideElement[] {
   return elements;
 }
 
-function elementToHtml(element: SlideElement): string {
+function elementToHtml(element: SlideElement, theme: ThemeConfig): string {
+  const { position, style = {} } = element;
+  const baseStyle = [
+    `left: ${position.x}%`,
+    `top: ${position.y}%`,
+    `width: ${position.width}%`,
+    `height: ${position.height}%`,
+    `font-size: ${style.fontSize || '1rem'}`,
+    style.fontWeight ? `font-weight: ${style.fontWeight}` : '',
+    style.fontFamily ? `font-family: ${style.fontFamily}` : '',
+    style.color ? `color: ${style.color}` : '',
+    style.backgroundColor ? `background: ${style.backgroundColor}` : '',
+    style.textAlign ? `text-align: ${style.textAlign}` : '',
+    style.padding ? `padding: ${style.padding}` : '',
+    style.borderRadius ? `border-radius: ${style.borderRadius}` : '',
+    style.opacity !== undefined ? `opacity: ${style.opacity}` : '',
+  ]
+    .filter(Boolean)
+    .join('; ');
+
+  const attrs = `class="slide-element" data-element-id="${element.id}" data-element-type="${element.type}" data-pos="${position.x},${position.y},${position.width},${position.height}" style="${baseStyle}"`;
+
   switch (element.type) {
     case 'heading':
-      return `<h1 style="font-size: ${element.style?.fontSize || '2rem'}">${element.content}</h1>`;
+      return `<div ${attrs}><h1 class="m-0">${escapeHtml(element.content)}</h1></div>`;
     case 'subheading':
-      return `<h2>${element.content}</h2>`;
+      return `<div ${attrs}><h2 class="m-0">${escapeHtml(element.content)}</h2></div>`;
     case 'paragraph':
-      return `<p>${element.content}</p>`;
+      return `<div ${attrs}><p class="m-0 whitespace-pre-wrap">${escapeHtml(element.content).replace(/\n/g, '<br />')}</p></div>`;
     case 'bullet-list':
-      return `<ul>${element.content
+      return `<div ${attrs}><ul class="m-0 pl-5 space-y-1">${element.content
         .split('\n')
-        .map((item) => `<li>${item}</li>`)
-        .join('')}</ul>`;
+        .map((item) => `<li>${escapeHtml(item)}</li>`)
+        .join('')}</ul></div>`;
+    case 'numbered-list':
+      return `<div ${attrs}><ol class="m-0 pl-5 space-y-1">${element.content
+        .split('\n')
+        .map((item) => `<li>${escapeHtml(item)}</li>`)
+        .join('')}</ol></div>`;
     case 'image':
-      return `<img src="${element.content}" alt="" />`;
+      return `<div ${attrs}><img src="${escapeHtml(element.content)}" alt="" class="w-full h-full object-cover rounded" /></div>`;
+    case 'quote':
+      return `<div ${attrs}><blockquote class="m-0 italic border-l-4" style="border-color: ${theme.colors.accent}; padding-left: 1rem;">${escapeHtml(element.content)}</blockquote></div>`;
+    case 'divider':
+      return `<div ${attrs}><hr class="border-t border-current" /></div>`;
+    case 'code-block':
+      return `<div ${attrs}><pre class="m-0 p-3 bg-zinc-900 rounded font-mono text-sm overflow-x-auto"><code>${escapeHtml(element.content)}</code></pre></div>`;
     default:
-      return `<div>${element.content}</div>`;
+      return `<div ${attrs}>${escapeHtml(element.content)}</div>`;
   }
 }
 
-export default useSlideStore;
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function getSlideBackgroundStyle(slide: Slide): string {
+  const background = slide.background;
+  if (!background) return `background: ${DEFAULT_THEME.colors.background};`;
+
+  switch (background.type) {
+    case 'gradient':
+      return `background: ${background.value};`;
+    case 'image':
+      return `background: ${background.value}; background-size: cover; background-position: center;`;
+    case 'pattern':
+      return `background: ${background.value};`;
+    case 'solid':
+    default:
+      return `background: ${background.value};`;
+  }
+}

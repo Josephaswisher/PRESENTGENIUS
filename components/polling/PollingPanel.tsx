@@ -1,7 +1,8 @@
+
 /**
  * Polling Panel - Main presenter interface for live polling
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   XMarkIcon,
   PlayIcon,
@@ -10,6 +11,7 @@ import {
   UserGroupIcon,
   ClockIcon,
   CheckCircleIcon,
+  ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 import { QRCodeSVG } from 'qrcode.react';
 import {
@@ -25,17 +27,21 @@ import {
   type ResponseAggregate,
 } from '../../services/polling.service';
 import { extractContent, type QuizQuestion } from '../../services/content-extractor';
+import { AudienceView } from './AudienceView';
 
 interface PollingPanelProps {
   html: string;
   title: string;
+  presentationId?: string;
   onClose: () => void;
 }
 
-export function PollingPanel({ html, title, onClose }: PollingPanelProps) {
+export function PollingPanel({ html, title, presentationId, onClose }: PollingPanelProps) {
   // Session state
   const [session, setSession] = useState<PollSession | null>(null);
+  const [sessionEnded, setSessionEnded] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [showAudienceJoin, setShowAudienceJoin] = useState(false);
 
   // Question state
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
@@ -64,8 +70,9 @@ export function PollingPanel({ html, title, onClose }: PollingPanelProps) {
   // Create session
   const handleCreateSession = async () => {
     setIsCreatingSession(true);
+    setSessionEnded(false);
     try {
-      const newSession = await createSession(title, title);
+      const newSession = await createSession(presentationId || title, title);
       setSession(newSession);
     } catch (err) {
       console.error('Failed to create session:', err);
@@ -79,7 +86,7 @@ export function PollingPanel({ html, title, onClose }: PollingPanelProps) {
     if (!session) return;
 
     const unsubscribe = subscribeToResponses(session.id, (response) => {
-      setResponses(prev => [...prev, response]);
+      setResponses((prev) => [...prev, response]);
     });
 
     return () => {
@@ -107,7 +114,7 @@ export function PollingPanel({ html, title, onClose }: PollingPanelProps) {
     if (countdown === null || countdown <= 0) return;
 
     const timer = setInterval(() => {
-      setCountdown(prev => {
+      setCountdown((prev) => {
         if (prev === null || prev <= 1) {
           clearInterval(timer);
           setShowResults(true);
@@ -164,6 +171,7 @@ export function PollingPanel({ html, title, onClose }: PollingPanelProps) {
       setActiveQuestion(null);
       setResponses([]);
       setAggregate(null);
+      setSessionEnded(true);
     } catch (err) {
       console.error('Failed to end session:', err);
     }
@@ -217,6 +225,10 @@ export function PollingPanel({ html, title, onClose }: PollingPanelProps) {
                 </p>
               )}
 
+              {sessionEnded && (
+                <p className="text-xs text-zinc-500 mb-3">Previous session ended. Start a new one to continue.</p>
+              )}
+
               <button
                 onClick={handleCreateSession}
                 disabled={isCreatingSession}
@@ -253,9 +265,9 @@ export function PollingPanel({ html, title, onClose }: PollingPanelProps) {
                   </div>
                 </div>
 
-                <div className="bg-zinc-800 rounded-lg p-4">
+                <div className="bg-zinc-800 rounded-lg p-4 space-y-2">
                   <h4 className="text-sm font-medium text-zinc-300 mb-2">Settings</h4>
-                  <label className="flex items-center gap-2 text-sm text-zinc-400 mb-3 cursor-pointer">
+                  <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={showTimer}
@@ -278,15 +290,29 @@ export function PollingPanel({ html, title, onClose }: PollingPanelProps) {
                       <span className="text-sm text-zinc-500">seconds</span>
                     </div>
                   )}
+                  <div className="flex items-center gap-2 text-xs text-zinc-500 pt-1">
+                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                    <span>Session Active</span>
+                  </div>
                 </div>
 
-                <button
-                  onClick={handleEndSession}
-                  className="w-full px-4 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors flex items-center justify-center gap-2"
-                >
-                  <StopIcon className="w-4 h-4" />
-                  End Session
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => setShowAudienceJoin(true)}
+                    className="w-full px-4 py-2 rounded-lg bg-zinc-700 text-zinc-100 hover:bg-zinc-600 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                    Open Audience Join
+                  </button>
+
+                  <button
+                    onClick={handleEndSession}
+                    className="w-full px-4 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <StopIcon className="w-4 h-4" />
+                    End Session
+                  </button>
+                </div>
               </div>
 
               {/* Right: Questions & Results */}
@@ -397,6 +423,12 @@ export function PollingPanel({ html, title, onClose }: PollingPanelProps) {
           )}
         </div>
       </div>
+
+      {showAudienceJoin && session && (
+        <div className="fixed inset-0 z-50">
+          <AudienceView sessionCode={session.code} onClose={() => setShowAudienceJoin(false)} />
+        </div>
+      )}
     </div>
   );
 }

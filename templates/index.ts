@@ -13,11 +13,15 @@ import journalClubTemplate from './new-formats/journal-club/prompt';
 import diagnosisMannequinTemplate from './new-formats/diagnosis-mannequin/prompt';
 import chiefComplaintTemplate from './new-formats/chief-complaint-approach/prompt';
 import presentationStandardTemplate from './new-formats/presentation-standard/prompt';
+import drugDosingTemplate from './interactive/drug-dosing/prompt';
 
 // Template Registry
 export const TEMPLATE_REGISTRY: Record<string, Template> = {
   // Assessment Templates
   'board-mcq': boardMcqTemplate,
+
+  // Interactive Templates
+  'drug-dosing': drugDosingTemplate,
 
   // New Format Templates
   'infographic': infographicTemplate,

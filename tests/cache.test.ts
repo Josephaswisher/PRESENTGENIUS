@@ -7,6 +7,8 @@ describe('Cache Service', () => {
   beforeEach(() => {
     // Clear localStorage before each test
     localStorage.clear();
+    import.meta.env.VITE_ENABLE_PROMPT_CACHE = 'true';
+    localStorage.setItem('presentgenius_prompt_cache_opt_in', 'true');
   });
 
   it('should export cache functions', async () => {

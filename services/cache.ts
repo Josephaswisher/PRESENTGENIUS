@@ -1,9 +1,34 @@
 /**
  * Prompt Caching Service
  * Reduces API costs by caching identical prompts
+
  * Uses Supabase for persistent storage with localStorage fallback
  */
-import { getSupabase, isSupabaseConfigured } from './supabase';
+import supabase, { isSupabaseConfigured } from '../lib/supabase/client';
+import { clampText, redactSensitive } from '../utils/sanitization';
+
+const CACHE_ENV_ENABLED = import.meta.env.VITE_ENABLE_PROMPT_CACHE === 'true';
+const USER_OPT_IN_KEY = 'presentgenius_prompt_cache_opt_in';
+const REDACTED_PROMPT_MAX = 400;
+const REDACTED_RESPONSE_MAX = 6000;
+
+const isUserOptedIn = (): boolean => {
+  try {
+    return localStorage.getItem(USER_OPT_IN_KEY) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+export const setUserCachePreference = (enabled: boolean): void => {
+  try {
+    localStorage.setItem(USER_OPT_IN_KEY, enabled ? 'true' : 'false');
+  } catch {
+    /* ignore */
+  }
+};
+
+export const isCacheEnabled = (): boolean => CACHE_ENV_ENABLED && isUserOptedIn();
 
 interface CacheEntry {
   hash: string;
@@ -15,6 +40,10 @@ interface CacheEntry {
 }
 
 // Simple hash function for prompts
+function sanitizeCacheText(input: string, maxLength: number): string {
+  return clampText(redactSensitive(input || ''), maxLength);
+}
+
 function hashPrompt(prompt: string, provider: string): string {
   const str = `${provider}:${prompt}`;
   let hash = 0;
@@ -58,29 +87,35 @@ function saveLocalCache(cache: Map<string, CacheEntry>): void {
 }
 
 export async function getCachedResponse(prompt: string, provider: string): Promise<string | null> {
-  const hash = hashPrompt(prompt, provider);
-  
+  if (!isCacheEnabled()) {
+    return null;
+  }
+  const safePrompt = sanitizeCacheText(prompt, REDACTED_PROMPT_MAX);
+  if (!safePrompt) return null;
+  const hash = hashPrompt(safePrompt, provider);
+
   // Try Supabase first
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && supabase) {
     try {
-      const client = getSupabase();
-      const { data, error } = await client
+      const { data, error } = await supabase
         .from('prompt_cache')
         .select('response, hits')
         .eq('hash', hash)
-        .single();
+        .limit(1);
 
-      if (data && !error) {
+      if (data && data.length > 0 && !error) {
+        const entry = data[0];
         // Increment hit count
-        await client
+        await supabase
           .from('prompt_cache')
-          .update({ hits: (data.hits || 0) + 1 })
+          .update({ hits: (entry.hits || 0) + 1 })
           .eq('hash', hash);
-        
+
         console.log(`[Cache] HIT from Supabase: ${hash}`);
-        return data.response;
+        return entry.response;
       }
     } catch (e) {
+      console.warn('[Cache] Supabase query failed, falling back:', e);
       // Fall through to local cache
     }
   }
@@ -100,31 +135,38 @@ export async function getCachedResponse(prompt: string, provider: string): Promi
 }
 
 export async function setCachedResponse(
-  prompt: string, 
-  response: string, 
+  prompt: string,
+  response: string,
   provider: string
 ): Promise<void> {
-  const hash = hashPrompt(prompt, provider);
-  
+  if (!isCacheEnabled()) {
+    return;
+  }
+
+  const safePrompt = sanitizeCacheText(prompt, REDACTED_PROMPT_MAX);
+  const safeResponse = sanitizeCacheText(response, REDACTED_RESPONSE_MAX);
+  if (!safePrompt || !safeResponse) return;
+
+  const hash = hashPrompt(safePrompt, provider);
+
   const entry: CacheEntry = {
     hash,
-    prompt: prompt.slice(0, 500), // Store truncated prompt for debugging
-    response,
+    prompt: safePrompt,
+    response: safeResponse,
     provider,
     created_at: new Date().toISOString(),
     hits: 1
   };
 
   // Save to Supabase
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && supabase) {
     try {
-      const client = getSupabase();
-      await client
+      await supabase
         .from('prompt_cache')
         .upsert([entry], { onConflict: 'hash' });
       console.log(`[Cache] Saved to Supabase: ${hash}`);
     } catch (e) {
-      console.warn('[Cache] Failed to save to Supabase, using local');
+      console.warn('[Cache] Failed to save to Supabase, using local:', e);
     }
   }
 
@@ -137,15 +179,14 @@ export async function setCachedResponse(
 export async function clearCache(): Promise<void> {
   // Clear local
   localStorage.removeItem(LOCAL_CACHE_KEY);
-  
+
   // Clear Supabase
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && supabase) {
     try {
-      const client = getSupabase();
-      await client.from('prompt_cache').delete().neq('hash', '');
+      await supabase.from('prompt_cache').delete().neq('hash', '');
       console.log('[Cache] Cleared all cache');
     } catch (e) {
-      console.warn('[Cache] Failed to clear Supabase cache');
+      console.warn('[Cache] Failed to clear Supabase cache:', e);
     }
   }
 }
@@ -154,18 +195,18 @@ export async function getCacheStats(): Promise<{ entries: number; totalHits: num
   let entries = 0;
   let totalHits = 0;
 
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && supabase) {
     try {
-      const client = getSupabase();
-      const { data } = await client
+      const { data } = await supabase
         .from('prompt_cache')
         .select('hits');
-      
+
       if (data) {
         entries = data.length;
         totalHits = data.reduce((sum, row) => sum + (row.hits || 0), 0);
       }
     } catch (e) {
+      console.warn('[Cache] Failed to get stats from Supabase:', e);
       // Fall through
     }
   }

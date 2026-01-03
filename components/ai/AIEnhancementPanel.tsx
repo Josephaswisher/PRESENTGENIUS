@@ -1,8 +1,9 @@
+
 /**
  * AI Enhancement Panel
  * Provides research integration and image generation capabilities
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   XMarkIcon,
   MagnifyingGlassIcon,
@@ -12,6 +13,7 @@ import {
   CheckBadgeIcon,
   ArrowPathIcon,
   ClipboardDocumentIcon,
+  ShieldExclamationIcon,
 } from '@heroicons/react/24/outline';
 import {
   formatMedicalQuery,
@@ -39,6 +41,20 @@ interface AIEnhancementPanelProps {
 
 type TabType = 'research' | 'images' | 'verify';
 
+type VerificationState = {
+  verified: boolean;
+  issues: string[];
+  suggestions: string[];
+};
+
+const escapeHtml = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
 export function AIEnhancementPanel({
   html,
   title,
@@ -61,11 +77,83 @@ export function AIEnhancementPanel({
 
   // Verification state
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationResult, setVerificationResult] = useState<{
-    verified: boolean;
-    issues: string[];
-    suggestions: string[];
-  } | null>(null);
+  const [verificationResult, setVerificationResult] = useState<VerificationState | null>(null);
+
+  // Provider gates
+  const researchConfigured = useMemo(
+    () => Boolean(import.meta.env.VITE_PERPLEXITY_API_KEY),
+    []
+  );
+  const aiProviderConfigured = useMemo(
+    () => Boolean(
+      import.meta.env.VITE_OPENROUTER_API_KEY ||
+      import.meta.env.VITE_GEMINI_API_KEY ||
+      import.meta.env.VITE_ANTHROPIC_API_KEY
+    ),
+    []
+  );
+
+  const hasEnhancementContent = Boolean(researchResults || verificationResult);
+
+  // Build enhanced HTML with citations and verification notes
+  const buildEnhancedHtml = (): string => {
+    if (!hasEnhancementContent) return html;
+
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const body = doc.body || doc.createElement('body');
+
+      const enhancementSection = doc.createElement('section');
+      enhancementSection.className = 'slide evidence-slide';
+      enhancementSection.setAttribute('data-slide', 'evidence');
+
+      const parts: string[] = [];
+      parts.push(`<h2>Evidence & Updates</h2>`);
+
+      if (researchResults) {
+        const guidelineQuery = formatGuidelineQuery(title);
+        parts.push(`
+          <div class="research-summary">
+            <p class="text-sm">${escapeHtml(researchResults).replace(/\n/g, '<br/>')}</p>
+            <div class="text-xs text-zinc-500 mt-2">Search seed: ${escapeHtml(guidelineQuery)}</div>
+          </div>
+        `);
+      }
+
+      if (verificationResult) {
+        const issues = verificationResult.issues
+          .map(issue => `<li>⚠️ ${escapeHtml(issue)}</li>`)
+          .join('');
+        const suggestions = verificationResult.suggestions
+          .map(s => `<li>✅ ${escapeHtml(s)}</li>`)
+          .join('');
+
+        parts.push(`
+          <div class="verification-section mt-4">
+            <h3 class="text-base font-semibold">Verification Findings</h3>
+            ${issues ? `<ul class="text-sm space-y-1 text-red-300">${issues}</ul>` : ''}
+            ${suggestions ? `<ul class="text-sm space-y-1 text-green-300 mt-2">${suggestions}</ul>` : ''}
+          </div>
+        `);
+      }
+
+      if (sources.length > 0) {
+        parts.push(generateCitationsHTML(sources));
+      }
+
+      enhancementSection.innerHTML = parts.join('\n');
+      body.appendChild(enhancementSection);
+
+      const serialized = html.trim().toLowerCase().startsWith('<!doctype')
+        ? doc.documentElement.outerHTML
+        : body.innerHTML;
+      return serialized;
+    } catch (error) {
+      console.error('Failed to apply enhancement HTML', error);
+      return html;
+    }
+  };
 
   // Handle research
   const handleResearch = async () => {
@@ -75,22 +163,25 @@ export function AIEnhancementPanel({
     setResearchResults(null);
 
     try {
-      // Format the query for medical research
       const formattedQuery = formatMedicalQuery(researchQuery, title);
 
-      // In a real implementation, this would call Perplexity via MCP
-      // For now, we'll show a placeholder that demonstrates the UI
+      // Simulated fetch; replace with MCP call when available
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
-      setResearchResults(
-        `Research results for "${researchQuery}":\n\n` +
+      const demoResults =
+        `Research results for "${researchQuery}":
+
+` +
         `This feature uses Perplexity MCP for deep medical research. ` +
         `When configured, it will search PubMed, UpToDate, and clinical guidelines ` +
-        `to find evidence-based information on your topic.\n\n` +
-        `Query formatted as: ${formattedQuery}`
-      );
+        `to find evidence-based information on your topic.
 
-      // Demo sources
+` +
+        `Query formatted as: ${formattedQuery}`;
+
+      setResearchResults(demoResults);
+
+      // Demo sources; real implementation should map API response
       setSources([
         {
           title: 'ACC/AHA Clinical Guidelines',
@@ -106,6 +197,7 @@ export function AIEnhancementPanel({
         },
       ]);
     } catch (error) {
+      console.error('Research failed:', error);
       setResearchResults('Research failed. Please try again.');
     } finally {
       setIsResearching(false);
@@ -119,7 +211,6 @@ export function AIEnhancementPanel({
     setIsGenerating(true);
 
     try {
-      // Generate placeholder for demo (or real image if FAL is configured)
       const image = generatePlaceholder({
         prompt: imagePrompt,
         style: imageStyle,
@@ -158,6 +249,12 @@ export function AIEnhancementPanel({
     }
   };
 
+  const handleApplyEnhancement = () => {
+    if (!onEnhance || !hasEnhancementContent) return;
+    const updatedHtml = buildEnhancedHtml();
+    onEnhance(updatedHtml);
+  };
+
   // Copy evidence badge HTML
   const copyEvidenceBadge = (level: EvidenceLevel) => {
     const badge = {
@@ -166,8 +263,8 @@ export function AIEnhancementPanel({
       color: EVIDENCE_LEVELS[level].color,
       sources: [],
     };
-    const html = generateEvidenceBadgeHTML(badge);
-    navigator.clipboard.writeText(html);
+    const badgeHtml = generateEvidenceBadgeHTML(badge);
+    navigator.clipboard.writeText(badgeHtml);
   };
 
   // Use template prompt
@@ -194,6 +291,19 @@ export function AIEnhancementPanel({
             <XMarkIcon className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Gates */}
+        {(!aiProviderConfigured || !researchConfigured) && (
+          <div className="px-6 py-3 bg-amber-500/10 border-b border-amber-500/30 flex items-start gap-3 text-amber-200 text-sm">
+            <ShieldExclamationIcon className="w-5 h-5 mt-0.5" />
+            <div>
+              <p className="font-medium">Running in demo mode</p>
+              <p className="text-amber-200/80 text-xs">
+                {aiProviderConfigured ? 'Add VITE_PERPLEXITY_API_KEY to enable live research.' : 'Add an AI provider key (OpenRouter, Gemini, or Claude) and VITE_PERPLEXITY_API_KEY for research/verification.'}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex border-b border-zinc-800">
@@ -268,8 +378,17 @@ export function AIEnhancementPanel({
 
               {/* Results */}
               {researchResults && (
-                <div className="bg-zinc-800 rounded-lg p-4">
-                  <h4 className="font-medium text-white mb-2">Results</h4>
+                <div className="bg-zinc-800 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-white">Results</h4>
+                    <button
+                      onClick={handleApplyEnhancement}
+                      disabled={!hasEnhancementContent || !onEnhance}
+                      className="px-3 py-1.5 text-xs rounded-lg bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50"
+                    >
+                      Apply to slides
+                    </button>
+                  </div>
                   <p className="text-sm text-zinc-300 whitespace-pre-wrap">{researchResults}</p>
 
                   {sources.length > 0 && (
@@ -474,20 +593,29 @@ export function AIEnhancementPanel({
               </button>
 
               {verificationResult && (
-                <div className="bg-zinc-800 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <CheckBadgeIcon
-                      className={`w-5 h-5 ${
-                        verificationResult.verified ? 'text-green-400' : 'text-amber-400'
-                      }`}
-                    />
-                    <span className="font-medium text-white">
-                      {verificationResult.verified ? 'Content Verified' : 'Review Needed'}
-                    </span>
+                <div className="bg-zinc-800 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckBadgeIcon
+                        className={`w-5 h-5 ${
+                          verificationResult.verified ? 'text-green-400' : 'text-amber-400'
+                        }`}
+                      />
+                      <span className="font-medium text-white">
+                        {verificationResult.verified ? 'Content Verified' : 'Review Needed'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleApplyEnhancement}
+                      disabled={!hasEnhancementContent || !onEnhance}
+                      className="px-3 py-1.5 text-xs rounded-lg bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50"
+                    >
+                      Apply to slides
+                    </button>
                   </div>
 
                   {verificationResult.issues.length > 0 && (
-                    <div className="mb-4">
+                    <div>
                       <h5 className="text-sm font-medium text-red-400 mb-2">Issues Found</h5>
                       <ul className="space-y-1">
                         {verificationResult.issues.map((issue, i) => (

@@ -8,7 +8,12 @@ export default {
     "./components/**/*.{ts,tsx}",
     "./services/**/*.{ts,tsx}",
     "./data/**/*.{ts,tsx}",
+    "./src/**/*.{ts,tsx}",
   ],
+  // Enable JIT mode for better performance and smaller builds
+  mode: 'jit',
+  // Safelist only necessary dynamic classes if any
+  safelist: [],
   theme: {
     extend: {
       borderRadius: {
@@ -89,12 +94,17 @@ export default {
           "0%": { transform: "rotate(0deg)" },
           "100%": { transform: "rotate(360deg)" },
         },
+        "slide-down": {
+          "0%": { transform: "translateY(-100%)", opacity: "0" },
+          "100%": { transform: "translateY(0)", opacity: "1" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         loading: "loading 3s ease-in-out infinite",
         "spin-slow": "spin-slow 3s linear infinite",
+        "slide-down": "slide-down 0.3s ease-out",
       },
     },
   },

@@ -1,3 +1,4 @@
+
 /**
  * Live Polling Service
  * Real-time audience response system using Supabase Realtime
@@ -49,6 +50,28 @@ export interface ResponseAggregate {
 // Local storage for offline/demo mode
 const LOCAL_SESSIONS_KEY = 'vibe-poll-sessions';
 const LOCAL_RESPONSES_KEY = 'vibe-poll-responses';
+const LOCAL_QUESTIONS_KEY = 'vibe-poll-questions';
+
+type PersistedQuestion = PollQuestion;
+
+type PersistedResponse = PollResponse;
+
+function loadLocal<T>(key: string): T[] {
+  try {
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch (e) {
+    console.warn(`[Polling] Failed to load ${key} from localStorage`, e);
+    return [] as T[];
+  }
+}
+
+function saveLocal<T>(key: string, value: T[]): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn(`[Polling] Failed to persist ${key} to localStorage`, e);
+  }
+}
 
 /**
  * Generate a unique session code
@@ -72,6 +95,29 @@ export function generateResponderId(): string {
   const id = `resp-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
   localStorage.setItem('vibe-responder-id', id);
   return id;
+}
+
+function persistLocalQuestion(question: PersistedQuestion): void {
+  const questions = loadLocal<PersistedQuestion>(LOCAL_QUESTIONS_KEY);
+  // Deactivate previous active questions for the session
+  const updated = questions.map((q) =>
+    q.sessionId === question.sessionId ? { ...q, isActive: false } : q
+  );
+  updated.push(question);
+  saveLocal(LOCAL_QUESTIONS_KEY, updated);
+}
+
+function getLocalActiveQuestion(sessionId: string): PollQuestion | null {
+  const questions = loadLocal<PersistedQuestion>(LOCAL_QUESTIONS_KEY);
+  const active = questions.filter((q) => q.sessionId === sessionId && q.isActive);
+  if (active.length === 0) return null;
+  return active[active.length - 1];
+}
+
+function getLocalResponses(sessionId: string): PersistedResponse[] {
+  return loadLocal<PersistedResponse>(LOCAL_RESPONSES_KEY).filter(
+    (r) => r.sessionId === sessionId
+  );
 }
 
 /**
@@ -127,9 +173,9 @@ export async function createSession(
   }
 
   // Fallback to local storage
-  const sessions = JSON.parse(localStorage.getItem(LOCAL_SESSIONS_KEY) || '[]');
+  const sessions = loadLocal<PollSession>(LOCAL_SESSIONS_KEY);
   sessions.push(session);
-  localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(sessions));
+  saveLocal(LOCAL_SESSIONS_KEY, sessions);
 
   return session;
 }
@@ -167,8 +213,8 @@ export async function findSessionByCode(code: string): Promise<PollSession | nul
   }
 
   // Fallback to local storage
-  const sessions = JSON.parse(localStorage.getItem(LOCAL_SESSIONS_KEY) || '[]');
-  return sessions.find((s: PollSession) => s.code === normalizedCode && s.isActive) || null;
+  const sessions = loadLocal<PollSession>(LOCAL_SESSIONS_KEY);
+  return sessions.find((s) => s.code === normalizedCode && s.isActive) || null;
 }
 
 /**
@@ -188,11 +234,11 @@ export async function endSession(sessionId: string): Promise<void> {
   }
 
   // Local fallback
-  const sessions = JSON.parse(localStorage.getItem(LOCAL_SESSIONS_KEY) || '[]');
-  const updated = sessions.map((s: PollSession) =>
+  const sessions = loadLocal<PollSession>(LOCAL_SESSIONS_KEY);
+  const updated = sessions.map((s) =>
     s.id === sessionId ? { ...s, isActive: false } : s
   );
-  localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(updated));
+  saveLocal(LOCAL_SESSIONS_KEY, updated);
 }
 
 /**
@@ -238,7 +284,7 @@ export async function startQuestion(
         .single();
 
       if (!error && data) {
-        return {
+        const result: PollQuestion = {
           id: data.id,
           sessionId: data.session_id,
           questionText: data.question_text,
@@ -248,12 +294,15 @@ export async function startQuestion(
           timeLimit: data.time_limit,
           createdAt: data.created_at,
         };
+        persistLocalQuestion(result);
+        return result;
       }
     } catch (e) {
-      console.warn('Supabase question creation failed:', e);
+      console.warn('Supabase question creation failed, using local storage:', e);
     }
   }
 
+  persistLocalQuestion(question);
   return question;
 }
 
@@ -287,7 +336,7 @@ export async function getActiveQuestion(sessionId: string): Promise<PollQuestion
     }
   }
 
-  return null;
+  return getLocalActiveQuestion(sessionId);
 }
 
 /**
@@ -338,9 +387,9 @@ export async function submitResponse(
   }
 
   // Local fallback
-  const responses = JSON.parse(localStorage.getItem(LOCAL_RESPONSES_KEY) || '[]');
+  const responses = loadLocal<PersistedResponse>(LOCAL_RESPONSES_KEY);
   responses.push(response);
-  localStorage.setItem(LOCAL_RESPONSES_KEY, JSON.stringify(responses));
+  saveLocal(LOCAL_RESPONSES_KEY, responses);
 
   return response;
 }
@@ -362,7 +411,7 @@ export async function getResponseAggregate(
         .eq('question_id', questionId);
 
       if (!error && data) {
-        responses = data.map(r => ({
+        responses = data.map((r) => ({
           id: r.id,
           questionId: r.question_id,
           sessionId: r.session_id,
@@ -377,15 +426,14 @@ export async function getResponseAggregate(
   }
 
   // Also check local storage
-  const localResponses = JSON.parse(localStorage.getItem(LOCAL_RESPONSES_KEY) || '[]');
-  const localForQuestion = localResponses.filter(
-    (r: PollResponse) => r.questionId === questionId
+  const localResponses = loadLocal<PersistedResponse>(LOCAL_RESPONSES_KEY).filter(
+    (r) => r.questionId === questionId
   );
-  responses = [...responses, ...localForQuestion];
+  responses = [...responses, ...localResponses];
 
   // Count responses per option
   const counts = new Map<number, number>();
-  responses.forEach(r => {
+  responses.forEach((r) => {
     counts.set(r.selectedOption, (counts.get(r.selectedOption) || 0) + 1);
   });
 
@@ -410,7 +458,18 @@ export function subscribeToResponses(
   sessionId: string,
   onNewResponse: (response: PollResponse) => void
 ): (() => void) | null {
-  if (!supabase) return null;
+  if (!supabase) {
+    let lastCount = 0;
+    const interval = setInterval(() => {
+      const local = getLocalResponses(sessionId);
+      if (local.length > lastCount) {
+        const newItems = local.slice(lastCount);
+        newItems.forEach((resp) => onNewResponse(resp));
+        lastCount = local.length;
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }
 
   const channel = supabase
     .channel(`responses:${sessionId}`)
@@ -448,7 +507,19 @@ export function subscribeToQuestions(
   sessionId: string,
   onQuestionChange: (question: PollQuestion | null) => void
 ): (() => void) | null {
-  if (!supabase) return null;
+  if (!supabase) {
+    let lastActiveId: string | null = null;
+    const interval = setInterval(async () => {
+      const active = getLocalActiveQuestion(sessionId);
+      const activeId = active?.id || null;
+      if (activeId !== lastActiveId) {
+        lastActiveId = activeId;
+        onQuestionChange(active);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }
 
   const channel = supabase
     .channel(`questions:${sessionId}`)
@@ -461,7 +532,6 @@ export function subscribeToQuestions(
         filter: `session_id=eq.${sessionId}`,
       },
       async () => {
-        // Fetch the current active question
         const question = await getActiveQuestion(sessionId);
         onQuestionChange(question);
       }

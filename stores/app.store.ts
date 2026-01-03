@@ -46,6 +46,7 @@ interface AppState {
     autoSaveEnabled: boolean;
     autoSaveInterval: number; // ms
     defaultLearnerLevel: string;
+    promptCacheEnabled: boolean;
   };
 }
 
@@ -121,6 +122,7 @@ const initialState: AppState = {
     autoSaveEnabled: true,
     autoSaveInterval: 30000,
     defaultLearnerLevel: 'PGY1',
+    promptCacheEnabled: false,
   },
 };
 

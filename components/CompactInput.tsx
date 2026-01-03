@@ -40,7 +40,7 @@ export const CompactInput: React.FC<CompactInputProps> = ({
   const [duration, setDuration] = useState('conference');
   const [colorScheme, setColorScheme] = useState('clinical-blue');
   const [printables, setPrintables] = useState<string[]>([]);
-  const [provider, setProvider] = useState<AIProvider>('auto');
+  const [provider, setProvider] = useState<AIProvider>('openrouter');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);

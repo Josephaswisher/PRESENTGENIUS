@@ -227,9 +227,9 @@ export function logApiStatus(): void {
 
   console.log('API Keys Configured:', {
     gemini: !!import.meta.env.VITE_GEMINI_API_KEY,
-    anthropic: !!import.meta.env.VITE_ANTHROPIC_API_KEY,
-    openrouter: !!import.meta.env.VITE_OPENROUTER_API_KEY,
-    perplexity: !!import.meta.env.VITE_PERPLEXITY_API_KEY,
+    deepseek: !!import.meta.env.VITE_DEEPSEEK_API_KEY,
+    minimax: !!import.meta.env.VITE_MINIMAX_API_KEY,
+    glm: !!import.meta.env.VITE_GLM_API_KEY,
     supabase: !!import.meta.env.VITE_SUPABASE_URL,
     scraper: !!import.meta.env.VITE_SCRAPER_URL,
   });

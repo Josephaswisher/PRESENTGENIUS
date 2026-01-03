@@ -8,6 +8,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { BaseProvider, FileInput, GenerationOptions, ProgressCallback } from './base-provider';
 import { injectCheckpointSlides } from '../checkpoint-injector';
+import { injectMiniGames, detectMiniGameOpportunities } from '../mini-game-injector';
 
 export class ClaudeProvider extends BaseProvider {
   private client: Anthropic;
@@ -154,6 +155,7 @@ MEDICAL EDUCATION PATTERNS:
 - Anatomy diagrams with labeled parts
 - Clinical case presentations (patient history → findings → diagnosis)
 - Evidence-based citations (small text references)
+- Interactive drug dosing calculators with real-time sliders (weight-based, renal adjustments, safety warnings)
 
 EXAMPLE CREATIVE SLIDE STRUCTURES:
 
@@ -909,6 +911,155 @@ Example 11: Confetti Celebration
   }
 </script>
 
+Example 12: Interactive Drug Dosing Calculator
+<section class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900/20 to-slate-900 p-8">
+  <div class="max-w-5xl mx-auto">
+    <h2 class="text-4xl font-bold text-white mb-8">💊 Real-Time Drug Dosing Calculator</h2>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Input Controls -->
+      <div class="space-y-4">
+        <div class="bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-2xl p-6">
+          <h3 class="text-white font-bold mb-4">Select Medication</h3>
+          <select id="drugSelect" onchange="calculateDose()" class="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white">
+            <option value="acetaminophen">Acetaminophen</option>
+            <option value="vancomycin">Vancomycin</option>
+            <option value="gentamicin">Gentamicin</option>
+          </select>
+        </div>
+
+        <div class="bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-2xl p-6">
+          <label class="text-slate-300 text-sm font-medium mb-2 block flex justify-between">
+            <span>Weight (kg)</span>
+            <span id="weightDisplay" class="text-purple-400 font-bold">70</span>
+          </label>
+          <input type="range" id="weightSlider" min="3" max="150" value="70" step="0.5"
+                 oninput="document.getElementById('weightDisplay').textContent = this.value; calculateDose()"
+                 class="w-full h-3 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+
+          <label class="text-slate-300 text-sm font-medium mb-2 mt-4 block flex justify-between">
+            <span>CrCl (mL/min)</span>
+            <span id="crclDisplay" class="text-purple-400 font-bold">90</span>
+          </label>
+          <input type="range" id="crclSlider" min="5" max="120" value="90" step="5"
+                 oninput="document.getElementById('crclDisplay').textContent = this.value; calculateDose()"
+                 class="w-full h-3 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+      </div>
+
+      <!-- Results Display -->
+      <div class="lg:col-span-2 space-y-4">
+        <div class="bg-gradient-to-br from-purple-500/10 to-pink-500/10 border-2 border-purple-500/30 rounded-2xl p-6">
+          <div class="flex items-start justify-between mb-4">
+            <h3 id="drugName" class="text-white font-bold text-2xl">Acetaminophen</h3>
+            <div id="safetyBadge" class="px-4 py-2 bg-green-500/20 border border-green-500/50 rounded-xl text-green-400 font-bold">
+              ✓ SAFE
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 bg-slate-800/50 rounded-xl p-6">
+            <div>
+              <p class="text-slate-400 text-sm">Recommended Dose</p>
+              <p id="calcDose" class="text-white font-bold text-3xl">1000 mg</p>
+            </div>
+            <div>
+              <p class="text-slate-400 text-sm">Frequency</p>
+              <p id="frequency" class="text-white font-bold text-2xl">Q6H</p>
+            </div>
+          </div>
+
+          <div id="warningZone" class="hidden bg-red-500/10 border-2 border-red-500/50 rounded-xl p-4 mt-4">
+            <div class="flex items-start gap-2">
+              <span class="text-2xl animate-pulse">🚨</span>
+              <div>
+                <p class="text-red-400 font-bold text-lg">TOXIC DOSE ALERT</p>
+                <p class="text-slate-200" id="warningText">Dose exceeds safe range!</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Therapeutic Window Visualization -->
+        <div class="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6">
+          <h3 class="text-white font-bold mb-4">📊 Therapeutic Window</h3>
+          <div class="relative h-20 bg-gradient-to-r from-green-500/20 via-yellow-500/20 to-red-500/20 rounded-xl overflow-hidden mb-4">
+            <div class="absolute inset-0 flex text-xs font-bold">
+              <div class="flex-1 flex items-center justify-center text-green-400">SAFE</div>
+              <div class="flex-1 flex items-center justify-center text-yellow-400">BORDERLINE</div>
+              <div class="flex-1 flex items-center justify-center text-red-400">TOXIC</div>
+            </div>
+            <div id="doseIndicator" class="absolute top-0 bottom-0 w-1 bg-white shadow-lg transition-all duration-300" style="left: 25%;">
+              <div class="absolute -top-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-white"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    cursor: pointer;
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+  }
+</style>
+
+<script>
+  const drugs = {
+    acetaminophen: { name: 'Acetaminophen', dose: 15, freq: 'Q6H', max: 4000, renalAdj: false },
+    vancomycin: { name: 'Vancomycin', dose: 15, freq: 'Q12H', max: 4000, renalAdj: true },
+    gentamicin: { name: 'Gentamicin', dose: 5, freq: 'Q24H', max: 7, renalAdj: true }
+  };
+
+  function calculateDose() {
+    const drugKey = document.getElementById('drugSelect').value;
+    const weight = parseFloat(document.getElementById('weightSlider').value);
+    const crcl = parseFloat(document.getElementById('crclSlider').value);
+    const drug = drugs[drugKey];
+
+    let dose = drug.dose * weight;
+
+    // Renal adjustment
+    if (drug.renalAdj && crcl < 30) {
+      dose = dose * 0.5;
+    } else if (drug.renalAdj && crcl < 60) {
+      dose = dose * 0.75;
+    }
+
+    dose = Math.round(dose * 10) / 10;
+
+    // Update display
+    document.getElementById('drugName').textContent = drug.name;
+    document.getElementById('calcDose').textContent = dose + ' mg';
+    document.getElementById('frequency').textContent = drug.freq;
+
+    // Safety check
+    const dailyDose = dose * (drug.freq === 'Q6H' ? 4 : drug.freq === 'Q12H' ? 2 : 1);
+    const isToxic = dailyDose > drug.max;
+
+    if (isToxic) {
+      document.getElementById('warningZone').classList.remove('hidden');
+      document.getElementById('safetyBadge').className = 'px-4 py-2 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 font-bold';
+      document.getElementById('safetyBadge').textContent = '🚨 TOXIC';
+      document.getElementById('doseIndicator').style.left = '85%';
+    } else {
+      document.getElementById('warningZone').classList.add('hidden');
+      document.getElementById('safetyBadge').className = 'px-4 py-2 bg-green-500/20 border border-green-500/50 rounded-xl text-green-400 font-bold';
+      document.getElementById('safetyBadge').textContent = '✓ SAFE';
+      const percentage = Math.min((dailyDose / drug.max) * 100, 100);
+      document.getElementById('doseIndicator').style.left = percentage + '%';
+    }
+  }
+
+  calculateDose(); // Initialize
+</script>
+
 === UPDATED USAGE GUIDELINES (58 PATTERNS TOTAL) ===
 
 CRITICAL: Use 6-10 DIFFERENT enhancements per presentation (increased from 5-8)
@@ -1134,7 +1285,9 @@ REMEMBER:
       }
 
       // Post-processing: Inject checkpoint slides every 3 slides
-      onProgress?.('complete', 97, '🧠 Adding knowledge checkpoint slides...');
+      onProgress?.('complete', 96, '🧠 Adding knowledge checkpoint slides...');
+
+      let enhancedHtml = htmlContent;
 
       try {
         const htmlWithCheckpoints = await injectCheckpointSlides(htmlContent, {
@@ -1144,12 +1297,36 @@ REMEMBER:
           includeElaborative: true,
         });
 
-        onProgress?.('complete', 100, '✅ Presentation generated with checkpoints');
-        return htmlWithCheckpoints;
+        enhancedHtml = htmlWithCheckpoints;
+        onProgress?.('complete', 98, '✅ Checkpoints added');
       } catch (checkpointError) {
-        console.warn('⚠️ [Claude] Failed to inject checkpoints, returning presentation without them:', checkpointError);
-        onProgress?.('complete', 100, '✅ Presentation generated (checkpoints skipped)');
-        return htmlContent;
+        console.warn('⚠️ [Claude] Failed to inject checkpoints, continuing without them:', checkpointError);
+        onProgress?.('complete', 98, '⚠️ Checkpoints skipped');
+      }
+
+      // Post-processing: Add content enhancement layers
+      onProgress?.('complete', 99, '💎 Generating content enhancements...');
+
+      try {
+        const { generateEnhancementsForSlide, injectEnhancementLayerHTML } = await import('../content-enhancer');
+
+        // Extract topic from prompt or use generic
+        const topic = prompt.split('\n')[0].slice(0, 100) || 'Medical Education';
+
+        // Generate enhancements for the presentation (use Gemini for speed)
+        const enhancements = await generateEnhancementsForSlide(enhancedHtml, topic, 'gemini');
+
+        if (enhancements.length > 0) {
+          enhancedHtml = injectEnhancementLayerHTML(enhancedHtml, enhancements);
+          console.log(`✅ [Claude] Added ${enhancements.length} content enhancements`);
+        }
+
+        onProgress?.('complete', 100, '✅ Presentation generated with enhancements');
+        return enhancedHtml;
+      } catch (enhancementError) {
+        console.warn('⚠️ [Claude] Failed to add enhancements, returning presentation without them:', enhancementError);
+        onProgress?.('complete', 100, '✅ Presentation generated (enhancements skipped)');
+        return enhancedHtml;
       }
     } catch (error: any) {
       console.error('❌ Claude generation error:', error);

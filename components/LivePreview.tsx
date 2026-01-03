@@ -5,16 +5,18 @@
  * VibePresenterPro - Enhanced Live Preview
  * Includes multi-format export dropdown (HTML, PDF, JSON)
  */
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { ArrowDownTrayIcon, PlusIcon, ViewColumnsIcon, DocumentIcon, CodeBracketIcon, XMarkIcon, ChevronDownIcon, ClipboardDocumentIcon, PresentationChartBarIcon, PencilSquareIcon, DocumentDuplicateIcon, ChartBarIcon, SparklesIcon, DocumentTextIcon, RectangleStackIcon } from '@heroicons/react/24/outline';
 import { Creation } from './CreationHistory';
-import { exportToHTML, exportToPDF, exportToJSON, copyToClipboard } from '../services/export';
+import { exportToHTML, exportToPDF, exportToPNG, exportToJSON, copyToClipboard, type ExportProgress } from '../services/export';
 import { PresentationMode } from './PresentationMode';
 import { VisualEditor } from './editor/VisualEditor';
 import { CompanionMaterialsPanel } from './materials/CompanionMaterialsPanel';
 import { PollingPanel } from './polling/PollingPanel';
 import { AIEnhancementPanel } from './ai/AIEnhancementPanel';
 import { SlideEditor } from './SlideEditor';
+import { getScrollStyles } from '../utils/ios-scroll-fix';
+import { sanitizeHtmlContent } from '../utils/sanitization';
 
 interface LivePreviewProps {
   creation: Creation | null;
@@ -127,6 +129,8 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
     const [showSplitView, setShowSplitView] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [exportFeedback, setExportFeedback] = useState<string | null>(null);
+    const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
+    const [isExporting, setIsExporting] = useState(false);
     const [showPresentationMode, setShowPresentationMode] = useState(false);
     const [showVisualEditor, setShowVisualEditor] = useState(false);
     const [showMaterialsPanel, setShowMaterialsPanel] = useState(false);
@@ -135,6 +139,8 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
     const [showSlideEditor, setShowSlideEditor] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
 
+    const allowPreviewScripts = import.meta.env.VITE_ALLOW_IFRAME_SCRIPTS === 'true';
+    const previewSandbox = `${allowPreviewScripts ? 'allow-scripts ' : ''}allow-popups allow-modals`;
     // Handle loading animation steps
     useEffect(() => {
         if (isLoading) {
@@ -147,6 +153,10 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
             setLoadingStep(0);
         }
     }, [isLoading]);
+
+    const sanitizedHtml = useMemo(() => 
+        creation?.html ? sanitizeHtmlContent(creation.html, { stripForms: true }) : '',
+      [creation?.html]);
 
     // Default to Split View when a new creation with an image is loaded
     useEffect(() => {
@@ -169,38 +179,87 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
     }, []);
 
     // Show feedback message temporarily
-    const showFeedback = (message: string) => {
+    const showFeedback = (message: string, duration = 2000) => {
         setExportFeedback(message);
-        setTimeout(() => setExportFeedback(null), 2000);
+        setTimeout(() => setExportFeedback(null), duration);
+    };
+
+    // Handle export progress updates
+    const handleProgress = (progress: ExportProgress) => {
+        setExportProgress(progress);
+        if (progress.status === 'success') {
+            showFeedback(progress.message, 3000);
+            setIsExporting(false);
+            setExportProgress(null);
+            setShowExportMenu(false);
+        } else if (progress.status === 'error') {
+            showFeedback(`Error: ${progress.error || progress.message}`, 5000);
+            setIsExporting(false);
+            setExportProgress(null);
+        }
     };
 
     // Export handlers
     const handleExportHTML = () => {
-        if (!creation?.html) return;
-        exportToHTML(creation.html, creation.name);
-        showFeedback('HTML downloaded!');
-        setShowExportMenu(false);
+        if (!creation?.html || isExporting) return;
+        try {
+            exportToHTML(creation.html, creation.name);
+            showFeedback('HTML downloaded!');
+            setShowExportMenu(false);
+        } catch (error) {
+            showFeedback('Failed to export HTML', 3000);
+            console.error('HTML export error:', error);
+        }
     };
 
-    const handleExportPDF = () => {
-        if (!creation?.html) return;
-        exportToPDF(creation.html, creation.name);
-        showFeedback('Print dialog opened...');
+    const handleExportPDF = async () => {
+        if (!creation?.html || isExporting) return;
+        setIsExporting(true);
         setShowExportMenu(false);
+        try {
+            await exportToPDF(creation.html, creation.name, handleProgress);
+        } catch (error) {
+            setIsExporting(false);
+            showFeedback('PDF export failed. Try a simpler layout or contact support.', 5000);
+            console.error('PDF export error:', error);
+        }
+    };
+
+    const handleExportPNG = async () => {
+        if (!creation?.html || isExporting) return;
+        setIsExporting(true);
+        setShowExportMenu(false);
+        try {
+            await exportToPNG(creation.html, creation.name, handleProgress);
+        } catch (error) {
+            setIsExporting(false);
+            showFeedback('PNG export failed. Try a simpler layout or contact support.', 5000);
+            console.error('PNG export error:', error);
+        }
     };
 
     const handleExportJSON = () => {
-        if (!creation) return;
-        exportToJSON(creation.html, creation.name, creation.originalImage, creation.id);
-        showFeedback('JSON downloaded!');
-        setShowExportMenu(false);
+        if (!creation || isExporting) return;
+        try {
+            exportToJSON(creation.html, creation.name, creation.originalImage, creation.id);
+            showFeedback('JSON downloaded!');
+            setShowExportMenu(false);
+        } catch (error) {
+            showFeedback('Failed to export JSON', 3000);
+            console.error('JSON export error:', error);
+        }
     };
 
     const handleCopyToClipboard = async () => {
-        if (!creation?.html) return;
-        const success = await copyToClipboard(creation.html);
-        showFeedback(success ? 'Copied to clipboard!' : 'Copy failed');
-        setShowExportMenu(false);
+        if (!creation?.html || isExporting) return;
+        try {
+            const success = await copyToClipboard(creation.html);
+            showFeedback(success ? 'Copied to clipboard!' : 'Copy failed');
+            setShowExportMenu(false);
+        } catch (error) {
+            showFeedback('Failed to copy to clipboard', 3000);
+            console.error('Clipboard error:', error);
+        }
     };
 
   return (
@@ -237,10 +296,17 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
 
         {/* Right: Actions */}
         <div className="flex items-center justify-end space-x-1 w-auto min-w-[140px]">
-            {/* Export Feedback Toast */}
-            {exportFeedback && (
-                <div className="absolute top-12 right-4 bg-green-500/90 text-white text-xs px-3 py-1.5 rounded-md shadow-lg z-50 animate-pulse">
-                    {exportFeedback}
+            {/* Export Progress/Feedback Toast */}
+            {(exportFeedback || exportProgress) && (
+                <div className={`absolute top-12 right-4 ${
+                    exportProgress?.status === 'error' ? 'bg-red-500/90' :
+                    exportProgress?.status === 'exporting' ? 'bg-blue-500/90' :
+                    'bg-green-500/90'
+                } text-white text-xs px-3 py-1.5 rounded-md shadow-lg z-50 flex items-center gap-2`}>
+                    {exportProgress?.status === 'exporting' && (
+                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    )}
+                    <span>{exportProgress?.message || exportFeedback}</span>
                 </div>
             )}
 
@@ -340,8 +406,8 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
                         </button>
 
                         {/* Dropdown Menu */}
-                        {showExportMenu && (
-                            <div className="absolute right-0 top-full mt-1 w-44 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                        {showExportMenu && !isExporting && (
+                            <div className="absolute right-0 top-full mt-1 w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 overflow-hidden">
                                 <div className="py-1">
                                     <button
                                         onClick={handleExportHTML}
@@ -355,7 +421,14 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
                                         className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
                                     >
                                         <DocumentIcon className="w-4 h-4 text-red-400" />
-                                        <span>Print to PDF</span>
+                                        <span>Export as PDF</span>
+                                    </button>
+                                    <button
+                                        onClick={handleExportPNG}
+                                        className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
+                                    >
+                                        <DocumentIcon className="w-4 h-4 text-purple-400" />
+                                        <span>Export as PNG</span>
                                     </button>
                                     <button
                                         onClick={handleExportJSON}
@@ -391,7 +464,7 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
       </div>
 
       {/* Main Content Area */}
-      <div className="relative w-full flex-1 bg-[#09090b] flex overflow-hidden">
+      <div className="relative w-full flex-1 bg-[#09090b] flex flex-col md:flex-row overflow-hidden overscroll-contain">
         {isLoading ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center p-8 w-full">
              {/* Technical Loading State */}
@@ -424,17 +497,17 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
           <>
             {/* Split View: Left Panel (Original Image) */}
             {showSplitView && creation.originalImage && (
-                <div className="w-full md:w-1/2 h-1/2 md:h-full border-b md:border-b-0 md:border-r border-zinc-800 bg-[#0c0c0e] relative flex flex-col shrink-0">
+                <div className="w-full md:w-1/2 h-1/2 md:h-full border-b md:border-b-0 md:border-r border-zinc-800 bg-[#0c0c0e] relative flex flex-col shrink-0 overflow-hidden">
                     <div className="absolute top-4 left-4 z-10 bg-black/80 backdrop-blur text-zinc-400 text-[10px] font-mono uppercase px-2 py-1 rounded border border-zinc-800">
                         Input Source
                     </div>
-                    <div className="w-full h-full p-6 flex items-center justify-center overflow-hidden">
+                    <div className="w-full h-full p-3 md:p-6 flex items-center justify-center overflow-auto scroll-smooth-touch" style={getScrollStyles({ enableMomentum: true, direction: 'both' })}>
                         {creation.originalImage.startsWith('data:application/pdf') ? (
                             <PdfRenderer dataUrl={creation.originalImage} />
                         ) : (
-                            <img 
-                                src={creation.originalImage} 
-                                alt="Original Input" 
+                            <img
+                                src={creation.originalImage}
+                                alt="Original Input"
                                 className="max-w-full max-h-full object-contain shadow-xl border border-zinc-800/50 rounded"
                             />
                         )}
@@ -443,12 +516,16 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
             )}
 
             {/* App Preview Panel */}
-            <div className={`relative h-full bg-white transition-all duration-500 ${showSplitView && creation.originalImage ? 'w-full md:w-1/2 h-1/2 md:h-full' : 'w-full'}`}>
+            <div className={`relative h-full bg-white transition-all duration-500 overflow-hidden ${showSplitView && creation.originalImage ? 'w-full md:w-1/2 h-1/2 md:h-full' : 'w-full'}`}>
                  <iframe
                     title="Gemini Live Preview"
-                    srcDoc={creation.html}
-                    className="w-full h-full"
-                    sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin"
+                    srcDoc={sanitizedHtml}
+                    className="w-full h-full border-0"
+                    sandbox={previewSandbox}
+                    style={{
+                      touchAction: 'pan-y',
+                      ...getScrollStyles({ enableMomentum: true, direction: 'vertical' })
+                    }}
                 />
             </div>
           </>
@@ -513,6 +590,7 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
         <PollingPanel
           html={creation.html}
           title={creation.name}
+          presentationId={creation.id}
           onClose={() => setShowPollingPanel(false)}
         />
       )}

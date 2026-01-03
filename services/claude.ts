@@ -35,7 +35,8 @@ CORE DIRECTIVES:
 
 4. **Self-Contained & Professional**:
     - The output must be a single HTML file with embedded CSS (<style>) and JavaScript (<script>).
-    - Use **Tailwind CSS** via CDN: <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    - **Tailwind CSS**: Include compiled Tailwind styles in <style> tags or link to the compiled CSS file.
+    - Do NOT use cdn.tailwindcss.com in production - it should only be used in development.
     - **Design Aesthetic**: Clean, modern, medical-grade UI.
 
     MEDICAL COLOR SYSTEM:
@@ -80,6 +81,7 @@ export interface FileInput {
 export interface GenerationOptions {
   activityId?: string;
   learnerLevel?: LearnerLevel;
+  onProgress?: (partialContent: string) => void;
 }
 
 export async function bringToLife(
@@ -132,6 +134,17 @@ export async function bringToLife(
   const systemInstruction = buildSystemInstruction(activityId, learnerLevel);
 
   try {
+    // Use streaming if callback provided
+    const requestBody = {
+      model: CLAUDE_MODEL,
+      max_tokens: 16000,
+      messages: [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: userContent.length === 1 ? finalPrompt : userContent },
+      ],
+      stream: !!options.onProgress, // Enable streaming if callback provided
+    };
+
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
@@ -140,14 +153,7 @@ export async function bringToLife(
         'HTTP-Referer': window.location.origin,
         'X-Title': 'PRESENTGENIUS Medical Education',
       },
-      body: JSON.stringify({
-        model: CLAUDE_MODEL,
-        max_tokens: 16000,
-        messages: [
-          { role: 'system', content: systemInstruction },
-          { role: 'user', content: userContent.length === 1 ? finalPrompt : userContent },
-        ],
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -155,15 +161,51 @@ export async function bringToLife(
       throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
     }
 
-    const data = await response.json();
-    let text = data.choices?.[0]?.message?.content || '';
+    if (options.onProgress && response.body) {
+      // Handle streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedText = '';
 
-    if (!text) {
-      return '<!-- Failed to generate content -->';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter(line => line.trim().startsWith('data: '));
+
+        for (const line of lines) {
+          const data = line.replace('data: ', '').trim();
+          if (data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices?.[0]?.delta?.content || '';
+            if (content) {
+              accumulatedText += content;
+              options.onProgress(accumulatedText);
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
+        }
+      }
+
+      let text = accumulatedText || '<!-- Failed to generate content -->';
+      text = text.replace(/^```html\s*/, '').replace(/^```\s*/, '').replace(/```$/, '');
+      return text;
+    } else {
+      // Non-streaming fallback
+      const data = await response.json();
+      let text = data.choices?.[0]?.message?.content || '';
+
+      if (!text) {
+        return '<!-- Failed to generate content -->';
+      }
+
+      text = text.replace(/^```html\s*/, '').replace(/^```\s*/, '').replace(/```$/, '');
+      return text;
     }
-
-    text = text.replace(/^```html\s*/, '').replace(/^```\s*/, '').replace(/```$/, '');
-    return text;
   } catch (error) {
     console.error('Claude Generation Error:', error);
     throw error;

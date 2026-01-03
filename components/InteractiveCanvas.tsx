@@ -38,6 +38,7 @@ import {
   formatSearchResults,
   type ScraperStatus,
 } from '../services/medical-scrapers';
+import { useToast } from '../hooks/useToast';
 import { useCollaborationStore } from '../stores/collaboration.store';
 import {
   ChatMessage,
@@ -164,10 +165,9 @@ const RESEARCH_SOURCES = [
 ];
 
 const AI_PROVIDERS: { id: AIProvider; name: string; icon: string }[] = [
-  { id: 'gemini', name: 'Gemini 3 Flash', icon: '⚡' },
-  { id: 'opus', name: 'Claude Opus', icon: '👑' },
-  { id: 'claude', name: 'Claude Sonnet', icon: '🎭' },
-  { id: 'openrouter', name: 'OpenRouter', icon: '🌐' },
+  { id: 'deepseek', name: 'DeepSeek V3', icon: '🔵' },
+  { id: 'minimax', name: 'MiniMax 6.5', icon: '⚡' },
+  { id: 'glm', name: 'GLM-4', icon: '🟡' },
 ];
 
 const QUICK_ACTIONS = [
@@ -182,6 +182,8 @@ export const InteractiveCanvas: React.FC<Props> = ({
   currentProvider,
   onProviderChange,
 }) => {
+  const { error: showError } = useToast();
+
   const [doc, setDoc] = useState<CanvasDocument>({
     topic: '',
     targetAudience: 'residents',
@@ -1765,7 +1767,7 @@ Write engaging lecture content (2-3 paragraphs of prose, not bullets).`;
                       };
                       recognition.start();
                     } else {
-                      alert('Voice input not supported in this browser');
+                      showError('Voice input not supported in this browser');
                     }
                   }}
                   className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-400 hover:text-white

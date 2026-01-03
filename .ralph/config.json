@@ -1,0 +1,54 @@
+{
+  "project": {
+    "name": "PresentGenius",
+    "type": "react-vite-typescript",
+    "version": "0.1.0"
+  },
+  "ralph": {
+    "max_calls_per_hour": 100,
+    "timeout_minutes": 15,
+    "circuit_breaker": {
+      "max_failures": 5,
+      "reset_timeout_minutes": 10
+    },
+    "completion_detection": {
+      "enabled": true,
+      "patterns": [
+        "all tasks completed",
+        "nothing left to do",
+        "implementation finished"
+      ]
+    }
+  },
+  "development": {
+    "dev_server": {
+      "command": "npm run dev",
+      "port": 5173,
+      "url": "http://localhost:5173"
+    },
+    "build_command": "npm run build",
+    "test_command": "npm test",
+    "check_hmr": true
+  },
+  "git": {
+    "auto_commit": true,
+    "commit_frequency": "per_task",
+    "branch_prefix": "ralph/",
+    "require_approval_for": [
+      "database migrations",
+      "dependency updates",
+      "breaking changes"
+    ]
+  },
+  "notifications": {
+    "on_error": true,
+    "on_completion": true,
+    "on_human_review_needed": true
+  },
+  "safety": {
+    "require_tests_passing": false,
+    "require_build_success": true,
+    "max_file_size_kb": 500,
+    "backup_before_major_changes": true
+  }
+}

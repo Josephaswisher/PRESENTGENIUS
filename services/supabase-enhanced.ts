@@ -1,30 +1,17 @@
 /**
  * Enhanced Supabase Service for PRESENTGENIUS
  * Features: Auth, Real-time, Canvas Sync, Research Cache, Analytics
+ *
+ * DEPRECATED: Now uses shared client from lib/supabase/client
+ * This prevents multiple GoTrueClient instances
  */
-import { createClient, SupabaseClient, RealtimeChannel, User } from '@supabase/supabase-js';
+import supabase, { isSupabaseConfigured, getCurrentUser as libGetCurrentUser } from '../lib/supabase/client';
+import type { RealtimeChannel, User } from '@supabase/supabase-js';
 
-// Environment config
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-let supabase: SupabaseClient | null = null;
 let realtimeChannel: RealtimeChannel | null = null;
 
-// Initialize Supabase client
-export function getSupabase(): SupabaseClient {
-  if (!supabase && supabaseUrl && supabaseAnonKey) {
-    supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: true,
-      },
-      realtime: {
-        params: { eventsPerSecond: 10 },
-      },
-    });
-  }
+// Backward compatibility re-exports
+export function getSupabase() {
   if (!supabase) {
     throw new Error('Supabase not configured');
   }
@@ -32,7 +19,7 @@ export function getSupabase(): SupabaseClient {
 }
 
 export function isConfigured(): boolean {
-  return !!(supabaseUrl && supabaseAnonKey);
+  return isSupabaseConfigured();
 }
 
 // ============================================================
@@ -142,8 +129,7 @@ export async function signOut(): Promise<void> {
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  const { data: { user } } = await getSupabase().auth.getUser();
-  return user;
+  return libGetCurrentUser();
 }
 
 export function onAuthChange(callback: (user: User | null) => void): () => void {

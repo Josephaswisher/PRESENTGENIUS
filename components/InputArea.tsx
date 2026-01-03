@@ -3,6 +3,7 @@
  * Comprehensive content creation workstation for rapid lecture & web content generation
  */
 import React, { useCallback, useState, useRef } from 'react';
+import { useToast } from '../hooks/useToast';
 import {
   ArrowUpTrayIcon,
   XMarkIcon,
@@ -35,8 +36,7 @@ import { LearnerLevelSelector } from './LearnerLevelSelector';
 import { TemplateQueue, QueuedTemplate } from './TemplateQueue';
 import { FormatPicker } from './FormatPicker';
 import { Activity, LearnerLevel } from '../data/activities';
-import { GenerationOptions } from '../services/gemini';
-import { AIProvider, PROVIDERS, getProviderInfo } from '../services/ai-provider';
+import { AIProvider, PROVIDERS, getProviderInfo, GenerationOptions } from '../services/ai-provider';
 
 // Plan generation configuration export
 export interface PlanGenerationConfig {
@@ -362,6 +362,8 @@ export const InputArea: React.FC<InputAreaProps> = ({
   isCreatingPlan = false,
   disabled = false,
 }) => {
+  const { info } = useToast();
+
   // Core state
   const [files, setFiles] = useState<File[]>([]);
   const [prompt, setPrompt] = useState('');
@@ -374,7 +376,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
   const [useQueueMode, setUseQueueMode] = useState(false);
   
   // AI Provider state
-  const [aiProvider, setAiProvider] = useState<AIProvider>('gemini');
+  const [aiProvider, setAiProvider] = useState<AIProvider>('openrouter');
 
   // Enhanced state
   const [inputMode, setInputMode] = useState<InputMode>('detailed');
@@ -451,7 +453,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
   const handleUrlImport = () => {
     if (!urlInput.trim()) return;
     // In production, this would fetch and process the URL
-    alert(`URL import: ${urlInput}\n\nThis feature would fetch content from the URL and add it as context.`);
+    info(`URL import: ${urlInput}\n\nThis feature would fetch content from the URL and add it as context.`);
     setUrlInput('');
     setShowUrlInput(false);
   };

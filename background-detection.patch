@@ -1,0 +1,27 @@
+--- a/components/PresentationMode.tsx
++++ b/components/PresentationMode.tsx
+@@ -788,6 +788,20 @@
+           } catch (e) {
+             // Non-critical error, presentation can still work
+             console.warn('Could not inject presentation styles:', e);
+           }
+
++          // Detect content type and apply context-aware backgrounds to all slides
++          try {
++            const backgroundData: {[key: number]: string} = {};
++            slides.forEach((slide, index) => {
++              const backgroundStyle = detectContentTypeAndBackground(slide);
++              backgroundData[index] = backgroundStyle;
++
++              // Apply background style immediately to slide element
++              if (slide instanceof HTMLElement) {
++                applyBackgroundStyle(slide, backgroundStyle);
++              }
++            });
++            setSlideBackgrounds(backgroundData);
++          } catch (e) {
++            console.warn('Could not apply context-aware backgrounds:', e);
++          }
++
+           // Clear any previous errors
+           setIframeError(null);

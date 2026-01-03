@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 
 export interface PresentationVersion {
   id: string;
@@ -64,7 +64,7 @@ class VersionControlService {
   ): Promise<PresentationVersion | null> {
     try {
       // Get next version number
-      const { data: versionData, error: versionError } = await supabase
+      const { data: versionData, error: versionError } = await getSupabase()
         .rpc('get_next_version_number', { p_presentation_id: presentationId });
 
       if (versionError) throw versionError;
@@ -72,7 +72,7 @@ class VersionControlService {
       const versionNumber = versionData as number;
 
       // Insert new version
-      const { data, error } = await supabase
+      const { data, error } = await getSupabase()
         .from('presentation_versions')
         .insert({
           presentation_id: presentationId,
@@ -86,7 +86,7 @@ class VersionControlService {
       if (error) throw error;
 
       // Clean up old versions (keep last 10)
-      await supabase.rpc('cleanup_old_versions', {
+      await getSupabase().rpc('cleanup_old_versions', {
         p_presentation_id: presentationId,
       });
 
@@ -102,7 +102,7 @@ class VersionControlService {
    */
   async getVersions(presentationId: string): Promise<PresentationVersion[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await getSupabase()
         .from('presentation_versions')
         .select('*')
         .eq('presentation_id', presentationId)
@@ -125,7 +125,7 @@ class VersionControlService {
     versionNumber: number
   ): Promise<PresentationVersion | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await getSupabase()
         .from('presentation_versions')
         .select('*')
         .eq('presentation_id', presentationId)
@@ -240,7 +240,7 @@ class VersionControlService {
 
       // Create a new version with current state before restoring
       // This ensures we can undo the restore if needed
-      const { data: currentData, error: currentError } = await supabase
+      const { data: currentData, error: currentError } = await getSupabase()
         .from('presentations')
         .select('content')
         .eq('id', presentationId)
@@ -255,7 +255,7 @@ class VersionControlService {
       );
 
       // Restore the version
-      const { error: updateError } = await supabase
+      const { error: updateError } = await getSupabase()
         .from('presentations')
         .update({ content: version.snapshot })
         .eq('id', presentationId);
@@ -277,7 +277,7 @@ class VersionControlService {
     versionNumber: number
   ): Promise<boolean> {
     try {
-      const { error } = await supabase
+      const { error } = await getSupabase()
         .from('presentation_versions')
         .delete()
         .eq('presentation_id', presentationId)
@@ -297,7 +297,7 @@ class VersionControlService {
    */
   async getVersionCount(presentationId: string): Promise<number> {
     try {
-      const { count, error } = await supabase
+      const { count, error } = await getSupabase()
         .from('presentation_versions')
         .select('*', { count: 'exact', head: true })
         .eq('presentation_id', presentationId);

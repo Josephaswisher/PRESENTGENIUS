@@ -26,6 +26,7 @@ export interface FileInput {
 export interface GenerationOptions {
   activityId?: string;
   learnerLevel?: LearnerLevel;
+  onProgress?: (partialContent: string) => void;
 }
 
 /**
@@ -81,6 +82,17 @@ Focus on clarity, visual hierarchy, and actionable learning points.`;
   userContent.push({ type: 'text', text: finalPrompt });
 
   try {
+    // Use streaming if callback provided
+    const requestBody = {
+      model: OPUS_MODEL,
+      max_tokens: 16000,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userContent.length === 1 ? finalPrompt : userContent },
+      ],
+      stream: !!options.onProgress, // Enable streaming if callback provided
+    };
+
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
@@ -89,14 +101,7 @@ Focus on clarity, visual hierarchy, and actionable learning points.`;
         'HTTP-Referer': window.location.origin,
         'X-Title': 'PRESENTGENIUS Medical Education',
       },
-      body: JSON.stringify({
-        model: OPUS_MODEL,
-        max_tokens: 16000,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userContent.length === 1 ? finalPrompt : userContent },
-        ],
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -104,10 +109,43 @@ Focus on clarity, visual hierarchy, and actionable learning points.`;
       throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
     }
 
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || '';
+    if (options.onProgress && response.body) {
+      // Handle streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedText = '';
 
-    return text || '<!-- Failed to generate content -->';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter(line => line.trim().startsWith('data: '));
+
+        for (const line of lines) {
+          const data = line.replace('data: ', '').trim();
+          if (data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices?.[0]?.delta?.content || '';
+            if (content) {
+              accumulatedText += content;
+              options.onProgress(accumulatedText);
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
+        }
+      }
+
+      return accumulatedText || '<!-- Failed to generate content -->';
+    } else {
+      // Non-streaming fallback
+      const data = await response.json();
+      const text = data.choices?.[0]?.message?.content || '';
+      return text || '<!-- Failed to generate content -->';
+    }
   } catch (error) {
     console.error('Opus Generation Error:', error);
     throw error;

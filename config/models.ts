@@ -6,42 +6,78 @@
 export interface ModelConfig {
   id: string;
   name: string;
-  provider: 'google' | 'anthropic' | 'openrouter';
+  provider: "google" | "deepseek" | "minimax" | "glm" | "anthropic";
   description: string;
   maxTokens: number;
   inputCostPer1M?: number;
   outputCostPer1M?: number;
 }
 
+// Gemini Models
+const GEMINI_FLASH: ModelConfig = {
+  id: "gemini-3-flash-preview",
+  name: "Gemini 3 Flash",
+  provider: "google",
+  description: "Near-Pro intelligence at Flash speed with 1M context - 3x faster than 2.5 Pro",
+  maxTokens: 1000000,
+  inputCostPer1M: 0.5,
+  outputCostPer1M: 3.0,
+};
+
+const GEMINI_PRO: ModelConfig = {
+  id: "gemini-3-pro-preview",
+  name: "Gemini 3 Pro",
+  provider: "google",
+  description: "Most advanced reasoning Gemini model - Superior problem solving with 1M context",
+  maxTokens: 1000000,
+  inputCostPer1M: 2.5,
+  outputCostPer1M: 10.0,
+};
+
 export const AI_MODELS = {
-  gemini: {
-    id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash',
-    provider: 'google',
-    description: 'Fast, cost-effective, excellent for agentic workflows and UI generation',
-    maxTokens: 32768,
-    inputCostPer1M: 0.10,
-    outputCostPer1M: 0.40,
+  gemini: GEMINI_FLASH,
+  geminiPro: GEMINI_PRO,
+
+  deepseek: {
+    id: "deepseek-chat",
+    name: "DeepSeek V3",
+    provider: "deepseek",
+    description: "Most cost-effective model - excellent for medical education",
+    maxTokens: 16000,
+    inputCostPer1M: 0.3,
+    outputCostPer1M: 1.2,
+  } as ModelConfig,
+
+  minimax: {
+    id: "MiniMax-M2.1",
+    name: "MiniMax M2.1",
+    provider: "minimax",
+    description: "Advanced coding & reasoning model with 200K context",
+    maxTokens: 16000,
+    inputCostPer1M: 0.3,
+    outputCostPer1M: 1.2,
   } as ModelConfig,
 
   claude: {
-    id: 'anthropic/claude-sonnet-4-20250514',
-    name: 'Claude Sonnet 4',
-    provider: 'openrouter',
-    description: 'Balanced performance and quality for content generation',
-    maxTokens: 16000,
-    inputCostPer1M: 3.00,
-    outputCostPer1M: 15.00,
+    id: "claude-sonnet-4-5-20250929",
+    name: "Claude Sonnet 4.5",
+    provider: "anthropic",
+    description:
+      "Extended thinking with 1M context - Streaming, vision, advanced reasoning",
+    maxTokens: 1000000,
+    inputCostPer1M: 3.0,
+    outputCostPer1M: 15.0,
   } as ModelConfig,
 
   opus: {
-    id: 'anthropic/claude-opus-4-20250514',
-    name: 'Claude Opus 4',
-    provider: 'openrouter',
-    description: 'Premium quality for complex medical education content',
-    maxTokens: 16000,
-    inputCostPer1M: 15.00,
-    outputCostPer1M: 75.00,
+    id: "claude-opus-4-5-20251101",
+    name: "Claude Opus 4.5",
+    provider: "anthropic",
+    description:
+      "Premium AI with supreme reasoning and 1M context - Highest capability",
+    maxTokens: 1000000,
+    inputCostPer1M: 15.0,
+    outputCostPer1M: 75.0,
   } as ModelConfig,
 } as const;
 

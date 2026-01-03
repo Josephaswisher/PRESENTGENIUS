@@ -132,12 +132,12 @@ export function getMissingConfigMessage(): string | null {
 /**
  * Check if a specific provider is available
  */
-export function isProviderConfigured(provider: 'gemini' | 'openrouter' | 'anthropic' | 'perplexity'): boolean {
+export function isProviderConfigured(provider: 'gemini' | 'deepseek' | 'minimax' | 'glm'): boolean {
   const keyMap = {
     gemini: 'VITE_GEMINI_API_KEY',
-    openrouter: 'VITE_OPENROUTER_API_KEY',
-    anthropic: 'VITE_ANTHROPIC_API_KEY',
-    perplexity: 'VITE_PERPLEXITY_API_KEY',
+    deepseek: 'VITE_DEEPSEEK_API_KEY',
+    minimax: 'VITE_MINIMAX_API_KEY',
+    glm: 'VITE_GLM_API_KEY',
   };
 
   const value = import.meta.env[keyMap[provider]];

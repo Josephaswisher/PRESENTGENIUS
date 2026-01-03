@@ -23,6 +23,55 @@ export default defineConfig(({ mode }) => {
       // Ensure source maps for debugging
       build: {
         sourcemap: true,
+        // Target modern browsers for smaller bundle
+        target: 'es2020',
+        // Chunk size warnings
+        chunkSizeWarningLimit: 1000,
+        // Enable minification
+        minify: 'terser',
+        terserOptions: {
+          compress: {
+            drop_console: false, // Keep console logs for debugging
+            pure_funcs: ['console.debug'], // Remove debug logs only
+          },
+        },
+        // Enable cache busting with content-based hashes
+        rollupOptions: {
+          output: {
+            // Add hash to entry files
+            entryFileNames: 'assets/[name]-[hash].js',
+            // Add hash to chunk files
+            chunkFileNames: 'assets/[name]-[hash].js',
+            // Add hash to asset files (CSS, images, etc.)
+            assetFileNames: 'assets/[name]-[hash].[ext]',
+            // Manual chunk splitting for better caching
+            manualChunks: (id) => {
+              // Vendor chunks for better caching
+              if (id.includes('node_modules')) {
+                // React and related libraries
+                if (id.includes('react') || id.includes('react-dom')) {
+                  return 'react-vendor';
+                }
+                // TipTap editor (large dependency)
+                if (id.includes('@tiptap')) {
+                  return 'editor-vendor';
+                }
+                // Supabase client
+                if (id.includes('@supabase')) {
+                  return 'supabase-vendor';
+                }
+                // Other large libraries
+                if (id.includes('html2canvas') || id.includes('jspdf') || id.includes('reveal.js')) {
+                  return 'utils-vendor';
+                }
+                // Everything else goes to common vendor
+                return 'vendor';
+              }
+            },
+          },
+        },
+        // Ensure consistent hash generation
+        assetsInlineLimit: 4096, // Inline small assets < 4KB for fewer requests
       },
     };
 });
