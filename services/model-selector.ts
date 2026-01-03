@@ -26,7 +26,7 @@ const MODEL_LIMITS: Record<OpenRouterModelId, number> = {
   'deepseek/deepseek-r1': 64000,
   'anthropic/claude-3.5-sonnet': 200000,
   'anthropic/claude-3.5-haiku': 200000,
-  'anthropic/claude-opus-4.5': 200000,
+  'anthropic/claude-opus-4-5': 200000,
   'anthropic/claude-sonnet-4.5': 200000,
   'openai/gpt-4o': 128000,
   'openai/gpt-4o-mini': 128000,
@@ -83,7 +83,7 @@ export function selectOptimalModel(
     // Quality tier (best quality)
     { modelId: 'anthropic/claude-3.5-sonnet', priority: 4, costScore: 5, qualityScore: 10, speedScore: 7 },
     { modelId: 'openai/gpt-4o', priority: 5, costScore: 6, qualityScore: 9, speedScore: 8 },
-    { modelId: 'anthropic/claude-opus-4.5', priority: 6, costScore: 8, qualityScore: 10, speedScore: 6 },
+    { modelId: 'anthropic/claude-opus-4-5', priority: 6, costScore: 8, qualityScore: 10, speedScore: 6 },
 
     // Specialized
     { modelId: 'google/gemini-2.0-flash-001', priority: 7, costScore: 4, qualityScore: 8, speedScore: 10 },

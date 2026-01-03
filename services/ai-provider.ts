@@ -125,10 +125,10 @@ const PROVIDERS_LIST: ProviderInfo[] = [
   {
     id: 'opus',
     name: 'Claude Opus 4.5',
-    model: 'claude-opus-4.5',
+    model: 'claude-opus-4-5',
     models: [
       {
-        id: 'claude-opus-4.5',
+        id: 'claude-opus-4-5',
         name: 'Claude Opus 4.5',
         contextLimit: 200000,
         costTier: 'premium',
@@ -364,7 +364,7 @@ async function generateWithDualAgents(
       [],
       {
         ...opts,
-        modelId: 'claude-opus-4.5',
+        modelId: 'claude-opus-4-5',
       },
       (phase, progress, message, error, partialContent) => {
         // Stream Opus phase partial content
@@ -508,7 +508,7 @@ export async function generateWithProvider(
           () => opusProvider.generate(
             enhancedPrompt,
             files,
-            { ...opts, modelId: options.modelId || 'claude-opus-4.5' },
+            { ...opts, modelId: options.modelId || 'claude-opus-4-5' },
             (phase, progress, message, error, partialContent) => {
               onProgress?.(phase as GenerationPhase, progress, message, error, partialContent);
             }
@@ -638,7 +638,7 @@ export async function refineWithProvider(
         () => opusProvider.refine(
           currentHtml,
           instruction,
-          modelId || 'claude-opus-4.5',
+          modelId || 'claude-opus-4-5',
           (phase, progress, message, error, partialContent) => {
             onProgress?.(phase as GenerationPhase, progress, message, error, partialContent);
           }
@@ -703,7 +703,7 @@ export async function refineWithProvider(
         () => opusProvider.refine(
           currentHtml,
           instruction,
-          'claude-opus-4.5',
+          'claude-opus-4-5',
           (phase, progress, message, error, partialContent) => {
             onProgress?.(phase as GenerationPhase, progress, message, error, partialContent);
           }

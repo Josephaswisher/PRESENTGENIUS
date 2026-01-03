@@ -74,10 +74,10 @@ export const AI_MODELS = {
     name: "Claude Opus 4.5",
     provider: "anthropic",
     description:
-      "Premium AI with supreme reasoning and 1M context - Highest capability",
-    maxTokens: 1000000,
-    inputCostPer1M: 15.0,
-    outputCostPer1M: 75.0,
+      "Best model for coding, agents, and computer use with 200K context - Industry-leading capability",
+    maxTokens: 200000,
+    inputCostPer1M: 5.0,
+    outputCostPer1M: 25.0,
   } as ModelConfig,
 } as const;
 
