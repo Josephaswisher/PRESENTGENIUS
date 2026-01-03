@@ -870,7 +870,6 @@ case ' ':
           } catch (e) {
             console.warn('Could not apply context-aware backgrounds:', e);
           }
-          }
 
           // Clear any previous errors
           setIframeError(null);
@@ -944,6 +943,23 @@ case ' ':
       }
     });
   }, [slideZoomLevels, currentSlide]);
+
+  // Reset and apply progressive disclosure when slide changes
+  useEffect(() => {
+    if (!progressiveDisclosureEnabled) return;
+
+    const currentState = progressiveDisclosureStates[currentSlide];
+    if (currentState) {
+      // Reset to hidden state when entering a new slide
+      resetProgressiveDisclosure(currentState);
+      
+      // Force re-render to apply changes
+      setProgressiveDisclosureStates(states => ({
+        ...states,
+        [currentSlide]: currentState,
+      }));
+    }
+  }, [currentSlide, progressiveDisclosureEnabled, progressiveDisclosureStates]);
 
   // Save scroll position (debounced) when user scrolls within a slide
   useEffect(() => {
@@ -1133,6 +1149,14 @@ case ' ':
 
     if (slideNum) {
       const num = parseInt(slideNum) - 1;
+        {/* Slide Content Area */}
+        <div
+          className="relative overflow-hidden"
+          style={{
+            width: showSplitScreen ? `${splitDividerPosition}%` : '100%',
+            transition: isDraggingDivider ? 'none' : 'width 0.3s ease'
+          }}
+        >
       setCurrentSlide(num);
     }
   };
@@ -1438,6 +1462,12 @@ case ' ':
             )}
           </div>
 
+            {progressiveDisclosureEnabled && progressiveDisclosureStates[currentSlide] && (
+              <span className="text-cyan-400 text-[10px] ml-2 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse"></span>
+                {getProgressString(progressiveDisclosureStates[currentSlide])} revealed
+              </span>
+            )}
           {/* Center: Compact Navigation */}
           <div className="flex items-center gap-1">
             <button
@@ -1524,6 +1554,29 @@ case ' ':
             </button>
           </div>
         </div>
+          {/* Tool Selector */}
+          <div>
+            <div className="text-white/40 text-[10px] mb-1.5">Tool</div>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setDrawTool('pen')}
+                className={`px-3 py-1.5 rounded text-xs transition-all ${
+                  drawTool === 'pen' ? 'bg-cyan-500 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+                }`}
+              >
+                Pen
+              </button>
+              <button
+                onClick={() => setDrawTool('eraser')}
+                className={`px-3 py-1.5 rounded text-xs transition-all ${
+                  drawTool === 'eraser' ? 'bg-cyan-500 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+                }`}
+              >
+                Eraser
+              </button>
+            </div>
+          </div>
+
 
         {/* Ultra-thin Progress Bar */}
         <div className="h-0.5 bg-white/10">
