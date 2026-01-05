@@ -35,9 +35,14 @@ import {
   ClockIcon,
   ExclamationTriangleIcon,
   ArrowPathIcon,
-  CloudArrowUpIcon
+  CloudArrowUpIcon,
+  ChatBubbleLeftRightIcon,
+  ShieldExclamationIcon,
+  WrenchScrewdriverIcon
 } from '@heroicons/react/24/outline';
 import { usePresentationHistoryStore, type Checkpoint } from '../stores/presentation-history.store';
+import { SlideChatPanel } from './presenter/SlideChatPanel';
+import { validateHtml, autoFixHtml, type ValidationResult, type ValidationWarning } from '../utils/html-validator';
 
 // ============================================================================
 // TYPES
@@ -255,6 +260,8 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
   const [lastSaveTime, setLastSaveTime] = useState<number>(0);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const [previewHtml, setPreviewHtml] = useState('');
+  const [showChatPanel, setShowChatPanel] = useState(false);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
 
   // Parse slides on mount
   useEffect(() => {
@@ -582,6 +589,17 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Allow Escape and C to work even when chat panel is open
+      if (e.key === 'Escape' && showChatPanel) {
+        e.preventDefault();
+        setShowChatPanel(false);
+        return;
+      }
+      if ((e.key === 'c' || e.key === 'C') && showChatPanel && !e.ctrlKey && !e.metaKey) {
+        // Don't toggle when typing in chat
+        return;
+      }
+
       if (showAddSlideModal || showEditSlideModal || showCheckpointModal || showRestoreModal) return;
 
       switch (e.key) {
@@ -662,6 +680,13 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
             setShowCheckpointModal(true);
           }
           break;
+        case 'c':
+        case 'C':
+          if (isEditMode && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setShowChatPanel(prev => !prev);
+          }
+          break;
       }
       setShowControls(true);
       resetHideTimeout();
@@ -669,7 +694,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, nextSlide, prevSlide, goToFirst, goToLast, showThumbnails, isEditMode, showAddSlideModal, showEditSlideModal, showCheckpointModal, showRestoreModal, handleUndo, handleRedo]);
+  }, [onClose, nextSlide, prevSlide, goToFirst, goToLast, showThumbnails, isEditMode, showAddSlideModal, showEditSlideModal, showCheckpointModal, showRestoreModal, showChatPanel, handleUndo, handleRedo]);
 
   // Fullscreen
   useEffect(() => {
@@ -740,18 +765,38 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
     setShowEditSlideModal(true);
   };
 
-  // Live preview update
+  // Live preview update with validation
   useEffect(() => {
     const debounce = setTimeout(() => {
       if (newSlideHtml.trim()) {
+        // Validate HTML
+        const validation = validateHtml(newSlideHtml);
+        setValidationResult(validation);
+
+        // Generate preview
         const globalStyles = extractGlobalStyles(html);
         setPreviewHtml(createIsolatedSlideHtml(newSlideHtml, globalStyles));
       } else {
         setPreviewHtml('');
+        setValidationResult(null);
       }
     }, 300);
     return () => clearTimeout(debounce);
   }, [newSlideHtml, html]);
+
+  // Handle auto-fix
+  const handleAutoFix = useCallback(() => {
+    if (newSlideHtml.trim()) {
+      const { fixed, changes } = autoFixHtml(newSlideHtml);
+      setNewSlideHtml(fixed);
+    }
+  }, [newSlideHtml]);
+
+  // Handle chat panel apply
+  const handleChatApplyHtml = useCallback((newHtml: string) => {
+    updateSlide(currentSlide, newHtml);
+    setShowChatPanel(false);
+  }, [currentSlide, updateSlide]);
 
   const progressPercent = totalSlides > 1 ? (currentSlide / (totalSlides - 1)) * 100 : 100;
   const checkpoints = historyStore.getCheckpoints();
@@ -848,13 +893,24 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
             </button>
 
             {isEditMode && (
-              <button
-                onClick={() => setShowAddSlideModal(true)}
-                className="p-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg transition-colors"
-                title="Add Slide (A)"
-              >
-                <PlusIcon className="w-5 h-5" />
-              </button>
+              <>
+                <button
+                  onClick={() => setShowAddSlideModal(true)}
+                  className="p-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg transition-colors"
+                  title="Add Slide (A)"
+                >
+                  <PlusIcon className="w-5 h-5" />
+                </button>
+
+                {/* AI Chat Panel */}
+                <button
+                  onClick={() => setShowChatPanel(!showChatPanel)}
+                  className={`p-2 rounded-lg transition-colors ${showChatPanel ? 'bg-purple-500 text-white' : 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-400'}`}
+                  title="AI Slide Editor (C)"
+                >
+                  <ChatBubbleLeftRightIcon className="w-5 h-5" />
+                </button>
+              </>
             )}
 
             <button
@@ -971,6 +1027,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           <span>Ctrl+S Save</span>
           <span>G Overview</span>
           <span>E Edit</span>
+          {isEditMode && <span>C AI Chat</span>}
         </div>
       </div>
 
@@ -1066,7 +1123,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
         </div>
       )}
 
-      {/* Add Slide Modal with Live Preview */}
+      {/* Add Slide Modal with Live Preview and Validation */}
       {showAddSlideModal && (
         <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-8" onClick={() => setShowAddSlideModal(false)}>
           <div className="bg-zinc-900 rounded-2xl border border-zinc-700 w-full max-w-6xl h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -1074,8 +1131,28 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
               <div className="flex items-center gap-3">
                 <ClipboardDocumentIcon className="w-5 h-5 text-green-400" />
                 <h3 className="text-white font-semibold">Add New Slide</h3>
+                {/* Validation Status Badge */}
+                {validationResult && (
+                  <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs ${
+                    validationResult.isValid
+                      ? validationResult.warnings.length > 0
+                        ? 'bg-yellow-500/20 text-yellow-400'
+                        : 'bg-green-500/20 text-green-400'
+                      : 'bg-red-500/20 text-red-400'
+                  }`}>
+                    {validationResult.isValid ? (
+                      validationResult.warnings.length > 0 ? (
+                        <><ShieldExclamationIcon className="w-3 h-3" /> {validationResult.warnings.length} warning(s)</>
+                      ) : (
+                        <><CheckIcon className="w-3 h-3" /> Valid</>
+                      )
+                    ) : (
+                      <><ExclamationTriangleIcon className="w-3 h-3" /> {validationResult.errors.length} error(s)</>
+                    )}
+                  </span>
+                )}
               </div>
-              <button onClick={() => { setShowAddSlideModal(false); setNewSlideHtml(''); setPreviewHtml(''); }} className="p-2 hover:bg-zinc-800 rounded-lg">
+              <button onClick={() => { setShowAddSlideModal(false); setNewSlideHtml(''); setPreviewHtml(''); setValidationResult(null); }} className="p-2 hover:bg-zinc-800 rounded-lg">
                 <XMarkIcon className="w-5 h-5 text-zinc-400" />
               </button>
             </div>
@@ -1088,9 +1165,32 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                   value={newSlideHtml}
                   onChange={(e) => setNewSlideHtml(e.target.value)}
                   placeholder={`<section class="slide-section">\n  <h2>Your Slide Title</h2>\n  <p>Content here...</p>\n</section>`}
-                  className="flex-1 w-full bg-zinc-800 border border-zinc-700 rounded-lg p-4 text-white font-mono text-sm resize-none focus:outline-none focus:border-cyan-500"
+                  className={`flex-1 w-full bg-zinc-800 border rounded-lg p-4 text-white font-mono text-sm resize-none focus:outline-none ${
+                    validationResult && !validationResult.isValid ? 'border-red-500/50' : 'border-zinc-700 focus:border-cyan-500'
+                  }`}
                   autoFocus
                 />
+
+                {/* Validation Errors & Warnings */}
+                {validationResult && (validationResult.errors.length > 0 || validationResult.warnings.length > 0) && (
+                  <div className="mt-3 max-h-32 overflow-y-auto space-y-1">
+                    {validationResult.errors.map((error, idx) => (
+                      <div key={`error-${idx}`} className="flex items-start gap-2 text-xs text-red-400 bg-red-500/10 rounded p-2">
+                        <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>{error.message}{error.line ? ` (line ${error.line})` : ''}</span>
+                      </div>
+                    ))}
+                    {validationResult.warnings.map((warning, idx) => (
+                      <div key={`warning-${idx}`} className="flex items-start gap-2 text-xs text-yellow-400 bg-yellow-500/10 rounded p-2">
+                        <ShieldExclamationIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <span>{warning.message}</span>
+                          {warning.suggestion && <p className="text-yellow-400/70 mt-0.5">{warning.suggestion}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               {/* Live Preview */}
               <div className="w-1/2 p-4 flex flex-col">
@@ -1106,12 +1206,30 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 p-4 border-t border-zinc-700">
-              <button onClick={() => { setShowAddSlideModal(false); setNewSlideHtml(''); setPreviewHtml(''); }} className="px-4 py-2 text-zinc-400 hover:text-white">Cancel</button>
-              <button onClick={handleAddSlide} disabled={!newSlideHtml.trim()} className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg disabled:opacity-50">
-                <CheckIcon className="w-4 h-4" />
-                Add Slide
-              </button>
+            <div className="flex items-center justify-between p-4 border-t border-zinc-700">
+              {/* Auto-fix button */}
+              <div>
+                {validationResult && validationResult.canAutoFix && (
+                  <button
+                    onClick={handleAutoFix}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg text-sm"
+                  >
+                    <WrenchScrewdriverIcon className="w-4 h-4" />
+                    Auto-fix Issues
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={() => { setShowAddSlideModal(false); setNewSlideHtml(''); setPreviewHtml(''); setValidationResult(null); }} className="px-4 py-2 text-zinc-400 hover:text-white">Cancel</button>
+                <button
+                  onClick={handleAddSlide}
+                  disabled={!newSlideHtml.trim() || (validationResult && !validationResult.isValid)}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <CheckIcon className="w-4 h-4" />
+                  Add Slide
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1231,6 +1349,16 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           </div>
         </div>
       )}
+
+      {/* AI Slide Chat Panel */}
+      <SlideChatPanel
+        isOpen={showChatPanel}
+        onClose={() => setShowChatPanel(false)}
+        currentSlideHtml={currentSlideInfo?.rawContent || ''}
+        currentSlideTitle={currentSlideInfo?.title || ''}
+        currentSlideIndex={currentSlide}
+        onApplyHtml={handleChatApplyHtml}
+      />
     </div>
   );
 };
