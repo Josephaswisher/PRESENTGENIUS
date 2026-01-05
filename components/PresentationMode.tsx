@@ -41,12 +41,17 @@ import {
   WrenchScrewdriverIcon,
   RectangleStackIcon,
   ArrowDownTrayIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  ArrowsRightLeftIcon,
+  CloudArrowDownIcon
 } from '@heroicons/react/24/outline';
 import { usePresentationHistoryStore, type Checkpoint } from '../stores/presentation-history.store';
 import { SlideChatPanel } from './presenter/SlideChatPanel';
 import { SlideTemplateLibrary } from './presenter/SlideTemplateLibrary';
+import { SlideDiffViewer } from './presenter/SlideDiffViewer';
+import { SlideImportModal } from './presenter/SlideImportModal';
 import { validateHtml, autoFixHtml, type ValidationResult, type ValidationWarning } from '../utils/html-validator';
+import { type ImportedSlide } from '../utils/slide-import-export';
 
 // ============================================================================
 // TYPES
@@ -269,6 +274,8 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
   const [selectedSlides, setSelectedSlides] = useState<Set<number>>(new Set());
   const [lastSelectedSlide, setLastSelectedSlide] = useState<number | null>(null);
+  const [showDiffViewer, setShowDiffViewer] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Parse slides on mount
   useEffect(() => {
@@ -701,6 +708,47 @@ ${sortedIndices.map(idx => slides[idx].rawContent).join('\n\n')}
     URL.revokeObjectURL(url);
   }, [selectedSlides, slides, html]);
 
+  // Diff viewer revert handler
+  const handleDiffRevert = useCallback((revertedHtml: string) => {
+    updateSlide(currentSlide, revertedHtml);
+    setShowDiffViewer(false);
+  }, [currentSlide, updateSlide]);
+
+  // Import slides handler
+  const handleImportSlides = useCallback((importedSlides: ImportedSlide[]) => {
+    const globalStyles = extractGlobalStyles(html);
+
+    const newSlides: SlideInfo[] = importedSlides.map((imported, idx) => {
+      const slideId = `slide-${Date.now()}-${idx}`;
+      return {
+        id: slideId,
+        index: slides.length + idx,
+        title: imported.title,
+        html: createIsolatedSlideHtml(imported.html, globalStyles),
+        rawContent: imported.html,
+        hasError: false
+      };
+    });
+
+    const allSlides = [...slides, ...newSlides];
+    allSlides.forEach((slide, idx) => { slide.index = idx; });
+
+    setSlides(allSlides);
+    setSaveStatus('unsaved');
+
+    // Record in history
+    newSlides.forEach(slide => {
+      historyStore.recordSlideChange(slide.id, slide.rawContent, slide.title);
+    });
+
+    if (onUpdateHtml) {
+      onUpdateHtml(reconstructHtml(allSlides, html));
+    }
+
+    // Jump to first imported slide
+    setCurrentSlide(slides.length);
+  }, [slides, html, onUpdateHtml, historyStore]);
+
   // Auto-play
   useEffect(() => {
     if (isAutoPlay) {
@@ -838,6 +886,20 @@ ${sortedIndices.map(idx => slides[idx].rawContent).join('\n\n')}
             deleteSelectedSlides();
           }
           break;
+        case 'd':
+        case 'D':
+          if (isEditMode && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setShowDiffViewer(prev => !prev);
+          }
+          break;
+        case 'i':
+        case 'I':
+          if (isEditMode && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setShowImportModal(prev => !prev);
+          }
+          break;
       }
       setShowControls(true);
       resetHideTimeout();
@@ -845,7 +907,7 @@ ${sortedIndices.map(idx => slides[idx].rawContent).join('\n\n')}
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, nextSlide, prevSlide, goToFirst, goToLast, showThumbnails, isEditMode, showAddSlideModal, showEditSlideModal, showCheckpointModal, showRestoreModal, showChatPanel, showTemplateLibrary, selectedSlides, handleUndo, handleRedo, selectAllSlides, deleteSelectedSlides]);
+  }, [onClose, nextSlide, prevSlide, goToFirst, goToLast, showThumbnails, isEditMode, showAddSlideModal, showEditSlideModal, showCheckpointModal, showRestoreModal, showChatPanel, showTemplateLibrary, showDiffViewer, showImportModal, selectedSlides, handleUndo, handleRedo, selectAllSlides, deleteSelectedSlides]);
 
   // Fullscreen
   useEffect(() => {
@@ -1070,6 +1132,24 @@ ${sortedIndices.map(idx => slides[idx].rawContent).join('\n\n')}
                 >
                   <ChatBubbleLeftRightIcon className="w-5 h-5" />
                 </button>
+
+                {/* Diff Viewer */}
+                <button
+                  onClick={() => setShowDiffViewer(!showDiffViewer)}
+                  className={`p-2 rounded-lg transition-colors ${showDiffViewer ? 'bg-orange-500 text-white' : 'bg-orange-500/20 hover:bg-orange-500/30 text-orange-400'}`}
+                  title="Compare Versions (D)"
+                >
+                  <ArrowsRightLeftIcon className="w-5 h-5" />
+                </button>
+
+                {/* Import/Export */}
+                <button
+                  onClick={() => setShowImportModal(!showImportModal)}
+                  className={`p-2 rounded-lg transition-colors ${showImportModal ? 'bg-blue-500 text-white' : 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-400'}`}
+                  title="Import/Export (I)"
+                >
+                  <CloudArrowDownIcon className="w-5 h-5" />
+                </button>
               </>
             )}
 
@@ -1188,7 +1268,8 @@ ${sortedIndices.map(idx => slides[idx].rawContent).join('\n\n')}
           <span>G Overview</span>
           <span>E Edit</span>
           {isEditMode && <span>T Templates</span>}
-          {isEditMode && <span>C AI Chat</span>}
+          {isEditMode && <span>D Diff</span>}
+          {isEditMode && <span>I Import</span>}
         </div>
       </div>
 
@@ -1611,6 +1692,27 @@ ${sortedIndices.map(idx => slides[idx].rawContent).join('\n\n')}
         onClose={() => setShowTemplateLibrary(false)}
         onSelectTemplate={handleTemplateSelect}
         currentSlideHtml={currentSlideInfo?.rawContent}
+      />
+
+      {/* Slide Diff Viewer */}
+      <SlideDiffViewer
+        isOpen={showDiffViewer}
+        onClose={() => setShowDiffViewer(false)}
+        slideId={currentSlideInfo?.id || ''}
+        slideTitle={currentSlideInfo?.title || ''}
+        currentHtml={currentSlideInfo?.rawContent || ''}
+        globalStyles={extractGlobalStyles(html)}
+        onRevertToVersion={handleDiffRevert}
+      />
+
+      {/* Slide Import/Export Modal */}
+      <SlideImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImportSlides={handleImportSlides}
+        currentSlides={slides.map(s => ({ id: s.id, title: s.title, rawContent: s.rawContent }))}
+        presentationTitle={title}
+        globalStyles={extractGlobalStyles(html)}
       />
     </div>
   );
