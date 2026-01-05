@@ -28,6 +28,7 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { InputDialog } from './components/InputDialog';
 import { loadHistory, saveHistory, mergeHistory, migrateOldStorage, getStorageStats } from './lib/storage';
 import { generateIntelligentTitle } from './services/title-generator';
+import HTMLImportAssistant from './components/HTMLImportAssistant';
 
 const App: React.FC = () => {
   const [activeCreation, setActiveCreation] = useState<Creation | null>(null);
@@ -39,6 +40,9 @@ const App: React.FC = () => {
   const { confirm } = useConfirm();
   const [isRegeneratingTitles, setIsRegeneratingTitles] = useState(false);
   const [isArchiveSidebarOpen, setIsArchiveSidebarOpen] = useState(false);
+
+  // HTML Import Assistant state
+  const [showHtmlImport, setShowHtmlImport] = useState(false);
 
   // AI Provider state - simplified to MiniMax only
   const [currentProvider, setCurrentProvider] = useState<AIProvider>('minimax');
@@ -371,6 +375,55 @@ Please generate an improved version of the presentation incorporating this feedb
     setIsGenerating(false);
   };
 
+  const handleImportHtml = async (formattedHtml: string) => {
+    try {
+      showInfo('Creating presentation from imported HTML...');
+
+      // Generate intelligent title from the HTML content
+      const title = await generateIntelligentTitle(formattedHtml);
+
+      // Create a new creation from the imported HTML
+      const newCreation: Creation = {
+        id: Date.now().toString(),
+        name: title || 'Imported Presentation',
+        html: formattedHtml,
+        timestamp: Date.now(),
+        activityId: 'imported-content',
+        learnerLevel: 'general',
+      };
+
+      // Add to history
+      setHistory(prev => [newCreation, ...prev]);
+
+      // Set as active creation
+      setActiveCreation(newCreation);
+
+      // Save to Supabase if configured
+      if (isSupabaseConfigured()) {
+        try {
+          await savePresentation(newCreation);
+          showSuccess('Imported presentation saved to cloud');
+        } catch (err) {
+          console.error('[App] Failed to save imported presentation to cloud:', err);
+        }
+      }
+
+      // Backup to Google Drive if connected
+      if (isGoogleDriveConnected()) {
+        try {
+          await backupPresentation(newCreation);
+        } catch (err) {
+          console.error('[App] Failed to backup imported presentation to Drive:', err);
+        }
+      }
+
+      showSuccess(`Successfully imported: ${newCreation.name}`);
+    } catch (error) {
+      console.error('[App] Failed to import HTML:', error);
+      showError('Failed to import HTML. Please try again.');
+    }
+  };
+
   const handleSelectCreation = (creation: Creation) => {
     setActiveCreation(creation);
   };
@@ -551,6 +604,7 @@ Please generate an improved version of the presentation incorporating this feedb
           onShowDataViewer={() => setShowDataViewer(true)}
           onShowSettings={() => setShowSettings(true)}
           onShowVersionHistory={() => setShowVersionHistory(true)}
+          onShowHtmlImport={() => setShowHtmlImport(true)}
           onExport={() => {
             if (!activeCreation) return;
             const blob = new Blob([JSON.stringify(activeCreation)], { type: 'application/json' });
@@ -755,6 +809,13 @@ Please generate an improved version of the presentation incorporating this feedb
       <SettingsPanel
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
+      />
+
+      {/* HTML Import Assistant */}
+      <HTMLImportAssistant
+        isOpen={showHtmlImport}
+        onClose={() => setShowHtmlImport(false)}
+        onImport={handleImportHtml}
       />
 
       {/* Generation Progress */}

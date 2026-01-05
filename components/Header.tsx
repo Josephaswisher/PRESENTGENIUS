@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { ArrowLeftIcon, PlayIcon, ArrowDownTrayIcon, CloudIcon, Cog6ToothIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlayIcon, ArrowDownTrayIcon, CloudIcon, Cog6ToothIcon, ClockIcon, DocumentArrowUpIcon } from '@heroicons/react/24/outline';
 import { UserMenu } from './auth/UserMenu';
 import type { Creation } from './CreationHistory';
 
@@ -21,6 +21,7 @@ interface HeaderProps {
   onShowDataViewer?: () => void;
   onShowSettings?: () => void;
   onShowVersionHistory?: () => void;
+  onShowHtmlImport?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,6 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   onShowDataViewer,
   onShowSettings,
   onShowVersionHistory,
+  onShowHtmlImport,
 }) => {
   return (
     <header className="fixed top-0 left-0 right-0 h-16 flex items-center justify-between px-6 border-b border-white/5 bg-zinc-950/20 backdrop-blur-xl z-[100]">
@@ -74,6 +76,18 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right: Actions + User */}
       <div className="flex items-center gap-3">
+        {/* HTML Import button (only show when no active creation) */}
+        {!activeCreation && onShowHtmlImport && (
+          <button
+            onClick={onShowHtmlImport}
+            className="px-4 py-2 bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 text-purple-300 hover:text-purple-200 rounded-xl transition-all flex items-center gap-2 text-sm font-medium border border-purple-500/30"
+            title="Import HTML from LMArena, ChatGPT, etc."
+          >
+            <DocumentArrowUpIcon className="w-4 h-4" />
+            <span className="hidden sm:inline">Import HTML</span>
+          </button>
+        )}
+
         {onShowSettings && (
           <button
             onClick={onShowSettings}
