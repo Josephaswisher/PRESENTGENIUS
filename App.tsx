@@ -282,11 +282,11 @@ const App: React.FC = () => {
     }
   };
 
-  // Chat refinement handler
+  // Chat refinement handler - Now uses FAST slide-level refinement
   const handleChatRefine = async (message: string, provider: AIProvider, modelId: string) => {
     if (!activeCreation) return;
 
-    console.log('🔵 [Chat Refinement] Starting refinement with parallel generation...');
+    console.log('🔵 [Chat Refinement] Starting FAST slide-level refinement...');
     console.log('📝 User message:', message);
     console.log('📄 Current HTML length:', activeCreation.html.length);
     console.log('🤖 Provider:', provider);
@@ -296,39 +296,48 @@ const App: React.FC = () => {
     setIsRefining(true);
 
     try {
-      // Build refinement prompt for parallel generation
-      const refinementPrompt = `Previous presentation exists for: "${activeCreation.name}"
+      // Import the fast refinement service
+      const { refinePresentation } = await import('./services/slide-refinement');
 
-User's refinement request: "${message}"
+      console.log('⏳ Using fast slide-level refinement (only updating affected slides)...');
 
-Please generate an improved version of the presentation incorporating this feedback while maintaining the overall structure and quality.`;
+      setGenPhase('refining' as GenerationPhase);
+      setGenProgress(10);
+      setGenMessage('Analyzing request and identifying slides to update...');
 
-      console.log('⏳ Regenerating with parallel pipeline...');
-
-      // Re-generate entire presentation with parallel pipeline
-      const refinedHtml = await generateParallelCourse(
-        refinementPrompt,
-        [], // No files for refinement
-        provider,
-        (phase, progress, msg, error, partialContent) => {
-          setGenPhase(phase as GenerationPhase);
-          setGenProgress(progress);
-          setGenMessage(msg || 'Refining presentation...');
-          if (partialContent) setStreamingHtml(partialContent);
+      // Use fast slide-level refinement instead of regenerating everything
+      const result = await refinePresentation(
+        activeCreation.html,
+        message,
+        { title: activeCreation.name, topic: activeCreation.name },
+        (msg) => {
+          console.log('[SlideRefinement]', msg);
+          setGenMessage(msg);
+          // Update progress based on message content
+          if (msg.includes('Parsing')) setGenProgress(15);
+          else if (msg.includes('Analyzing')) setGenProgress(25);
+          else if (msg.includes('Refining')) setGenProgress(50);
+          else if (msg.includes('complete')) setGenProgress(90);
         }
       );
 
-      console.log('✅ Refinement complete, length:', refinedHtml.length);
+      const refinedHtml = result.fullHtml;
+      console.log('✅ Fast refinement complete!');
+      console.log(`   Modified ${result.modifiedSlideIds.length} slides in ${(result.timing.totalMs / 1000).toFixed(1)}s`);
+      console.log(`   Timing: parse=${result.timing.parseMs.toFixed(0)}ms, AI=${result.timing.aiMs.toFixed(0)}ms, assemble=${result.timing.assembleMs.toFixed(0)}ms`);
 
-      // Update the presentation with regenerated HTML
+      // Update the presentation with refined HTML
       const updatedCreation = { ...activeCreation, html: refinedHtml };
       setActiveCreation(updatedCreation);
       setHistory(prev => prev.map(item => item.id === updatedCreation.id ? updatedCreation : item));
 
+      // Build detailed response message
+      const slideCount = result.modifiedSlideIds.length;
+      const timeSeconds = (result.timing.totalMs / 1000).toFixed(1);
       setChatMessages(prev => [...prev, {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        text: "✅ I've regenerated the presentation with your requested changes. Check the live preview!"
+        text: `✅ Updated ${slideCount} slide${slideCount !== 1 ? 's' : ''} in ${timeSeconds}s!\n\nModified: ${result.modifiedSlideIds.join(', ')}\n\nCheck the live preview to see your changes.`
       }]);
 
     } catch (error: any) {

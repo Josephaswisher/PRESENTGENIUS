@@ -4,8 +4,9 @@
  *
  * Slide Editor
  * Slide-by-slide editing interface with vertical scrolling
+ * Each slide has its own isolated container for independent rendering
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   XMarkIcon,
   PencilIcon,
@@ -14,14 +15,19 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   ArrowPathIcon,
-  DocumentDuplicateIcon
+  DocumentDuplicateIcon,
+  SparklesIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline';
+import { createIsolatedSlideHtml } from '../services/html-import-formatter';
 
 interface Slide {
   id: string;
-  content: string; // HTML content of this slide
+  content: string; // Raw section HTML content
+  isolatedHtml: string; // Full isolated HTML document for iframe
+  title: string; // Extracted slide title
   originalContent: string; // For change tracking
-  status: 'idle' | 'editing' | 'modified' | 'error';
+  status: 'idle' | 'editing' | 'modified' | 'refining' | 'error';
   error?: string;
 }
 
@@ -35,27 +41,43 @@ interface SlideEditorProps {
 
 /**
  * Parse HTML to extract individual slides from <section> tags
+ * Each slide gets its own isolated HTML container
  */
 function parseSlides(html: string): Slide[] {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
-  const sections = doc.querySelectorAll('section');
+  const sections = doc.querySelectorAll('section, [data-slide-container]');
+
+  // Extract global styles to include in each isolated container
+  const styleElements = doc.querySelectorAll('style');
+  const globalStyles = Array.from(styleElements).map(s => s.innerHTML).join('\n');
 
   if (sections.length === 0) {
-    // If no sections found, treat entire HTML as one slide
+    // If no sections found, treat entire body as one slide
+    const bodyContent = doc.body.innerHTML;
     return [{
-      id: '1',
-      content: html,
-      originalContent: html,
+      id: 'slide-1',
+      content: bodyContent,
+      isolatedHtml: createIsolatedSlideHtml(bodyContent, 'Slide 1'),
+      title: 'Slide 1',
+      originalContent: bodyContent,
       status: 'idle'
     }];
   }
 
   return Array.from(sections).map((section, index) => {
     const slideContent = section.outerHTML;
+    const slideId = section.id || `slide-${index + 1}`;
+
+    // Extract title from heading
+    const heading = section.querySelector('h1, h2, h3');
+    const title = heading?.textContent?.trim() || `Slide ${index + 1}`;
+
     return {
-      id: section.id || `slide-${index + 1}`,
+      id: slideId,
       content: slideContent,
+      isolatedHtml: createIsolatedSlideHtml(slideContent, title),
+      title,
       originalContent: slideContent,
       status: 'idle' as const
     };
@@ -103,6 +125,8 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
   const [showCodeView, setShowCodeView] = useState<Record<string, boolean>>({});
   const [editingSlide, setEditingSlide] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [refiningSlide, setRefiningSlide] = useState<string | null>(null);
+  const [refinePrompt, setRefinePrompt] = useState('');
 
   // Parse slides on mount or when HTML changes
   useEffect(() => {
@@ -128,9 +152,17 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
     setSlides(prev => {
       const updated = prev.map(s => {
         if (s.id === slideId) {
+          // Extract title from new content
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(editContent, 'text/html');
+          const heading = doc.querySelector('h1, h2, h3');
+          const newTitle = heading?.textContent?.trim() || s.title;
+
           return {
             ...s,
             content: editContent,
+            isolatedHtml: createIsolatedSlideHtml(editContent, newTitle),
+            title: newTitle,
             status: 'modified' as const
           };
         }
@@ -148,10 +180,79 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
     setEditContent('');
   };
 
+  // AI-powered slide refinement
+  const handleRefineSlide = async (slideId: string) => {
+    if (!refinePrompt.trim()) return;
+
+    const slide = slides.find(s => s.id === slideId);
+    if (!slide) return;
+
+    setSlides(prev => prev.map(s =>
+      s.id === slideId ? { ...s, status: 'refining' as const } : s
+    ));
+
+    try {
+      const { refineSingleSlide } = await import('../services/slide-refinement');
+
+      const refinedHtml = await refineSingleSlide(
+        slide.isolatedHtml,
+        refinePrompt,
+        slides.findIndex(s => s.id === slideId),
+        { title, topic },
+        (msg) => console.log('[SlideRefine]', msg)
+      );
+
+      // Extract the section content from the refined isolated HTML
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(refinedHtml, 'text/html');
+      const section = doc.querySelector('section, .slide-section');
+      const newContent = section ? section.outerHTML : doc.body.innerHTML;
+
+      // Extract new title
+      const heading = doc.querySelector('h1, h2, h3');
+      const newTitle = heading?.textContent?.trim() || slide.title;
+
+      setSlides(prev => {
+        const updated = prev.map(s => {
+          if (s.id === slideId) {
+            return {
+              ...s,
+              content: newContent,
+              isolatedHtml: refinedHtml,
+              title: newTitle,
+              status: 'modified' as const
+            };
+          }
+          return s;
+        });
+
+        // Reconstruct and notify parent
+        const reconstructed = reconstructHtml(updated, html);
+        onHtmlChange(reconstructed);
+
+        return updated;
+      });
+
+      setRefiningSlide(null);
+      setRefinePrompt('');
+    } catch (error) {
+      console.error('[SlideEditor] Refinement error:', error);
+      setSlides(prev => prev.map(s =>
+        s.id === slideId ? {
+          ...s,
+          status: 'error' as const,
+          error: error instanceof Error ? error.message : 'Refinement failed'
+        } : s
+      ));
+    }
+  };
+
   const handleDuplicateSlide = (slide: Slide) => {
     const newSlide: Slide = {
       id: `${slide.id}-copy-${Date.now()}`,
       content: slide.content,
+      isolatedHtml: slide.isolatedHtml,
+      title: `${slide.title} (Copy)`,
       originalContent: slide.content,
       status: 'idle'
     };
@@ -170,6 +271,16 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
 
       return updated;
     });
+  };
+
+  const handleStartRefine = (slideId: string) => {
+    setRefiningSlide(slideId);
+    setRefinePrompt('');
+  };
+
+  const handleCancelRefine = () => {
+    setRefiningSlide(null);
+    setRefinePrompt('');
   };
 
   const modifiedCount = useMemo(() =>
@@ -210,20 +321,34 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                   </div>
                   <div>
                     <h3 className="text-base font-semibold text-zinc-200">
-                      Slide {index + 1}
+                      {slide.title}
                     </h3>
-                    {slide.status === 'modified' && (
-                      <span className="text-xs text-cyan-400 flex items-center gap-1 mt-0.5">
-                        <CheckCircleIcon className="w-3 h-3" />
-                        Modified
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {slide.status === 'modified' && (
+                        <span className="text-xs text-cyan-400 flex items-center gap-1">
+                          <CheckCircleIcon className="w-3 h-3" />
+                          Modified
+                        </span>
+                      )}
+                      {slide.status === 'refining' && (
+                        <span className="text-xs text-purple-400 flex items-center gap-1">
+                          <ArrowPathIcon className="w-3 h-3 animate-spin" />
+                          AI Refining...
+                        </span>
+                      )}
+                      {slide.status === 'error' && (
+                        <span className="text-xs text-red-400 flex items-center gap-1">
+                          <ExclamationTriangleIcon className="w-3 h-3" />
+                          {slide.error || 'Error'}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   {/* Toggle Preview/Code */}
-                  {!editingSlide && (
+                  {!editingSlide && !refiningSlide && (
                     <button
                       onClick={() => toggleCodeView(slide.id)}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-400 hover:text-cyan-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors"
@@ -243,10 +368,23 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                     </button>
                   )}
 
+                  {/* AI Refine Button */}
+                  {!editingSlide && refiningSlide !== slide.id && (
+                    <button
+                      onClick={() => handleStartRefine(slide.id)}
+                      disabled={refiningSlide !== null || slide.status === 'refining'}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="AI-powered refinement"
+                    >
+                      <SparklesIcon className="w-3.5 h-3.5" />
+                      AI Refine
+                    </button>
+                  )}
+
                   {/* Duplicate Slide */}
                   <button
                     onClick={() => handleDuplicateSlide(slide)}
-                    disabled={editingSlide !== null}
+                    disabled={editingSlide !== null || refiningSlide !== null}
                     className="p-2 text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Duplicate slide"
                   >
@@ -257,7 +395,7 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                   {editingSlide !== slide.id ? (
                     <button
                       onClick={() => handleStartEdit(slide)}
-                      disabled={editingSlide !== null}
+                      disabled={editingSlide !== null || refiningSlide !== null}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <PencilIcon className="w-3.5 h-3.5" />
@@ -300,6 +438,90 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                       {editContent.length} characters
                     </p>
                   </div>
+                ) : refiningSlide === slide.id ? (
+                  /* AI Refine Mode */
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 text-purple-400">
+                      <SparklesIcon className="w-5 h-5" />
+                      <span className="text-sm font-medium">AI-Powered Refinement</span>
+                    </div>
+                    <p className="text-xs text-zinc-400">
+                      Describe how you want to improve this slide. The AI will modify only this slide, keeping the rest of your presentation unchanged.
+                    </p>
+                    <textarea
+                      value={refinePrompt}
+                      onChange={(e) => setRefinePrompt(e.target.value)}
+                      disabled={slide.status === 'refining'}
+                      className="w-full h-32 bg-zinc-950 border border-zinc-800 rounded-lg p-4 text-sm text-zinc-100 resize-none focus:outline-none focus:ring-2 focus:ring-purple-500/50 disabled:opacity-50"
+                      placeholder="e.g., 'Add more detail about pathophysiology' or 'Make the quiz questions more challenging' or 'Simplify for medical students'"
+                    />
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => setRefinePrompt('Add more clinical details and examples')}
+                          className="px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
+                        >
+                          + Clinical details
+                        </button>
+                        <button
+                          onClick={() => setRefinePrompt('Simplify the content for beginners')}
+                          className="px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
+                        >
+                          Simplify
+                        </button>
+                        <button
+                          onClick={() => setRefinePrompt('Make it more interactive with quiz questions')}
+                          className="px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
+                        >
+                          + Quiz
+                        </button>
+                        <button
+                          onClick={() => setRefinePrompt('Improve the visual layout and styling')}
+                          className="px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
+                        >
+                          Better styling
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleCancelRefine}
+                          disabled={slide.status === 'refining'}
+                          className="px-4 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleRefineSlide(slide.id)}
+                          disabled={!refinePrompt.trim() || slide.status === 'refining'}
+                          className="px-4 py-2 text-sm bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                        >
+                          {slide.status === 'refining' ? (
+                            <>
+                              <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                              Refining...
+                            </>
+                          ) : (
+                            <>
+                              <SparklesIcon className="w-4 h-4" />
+                              Refine Slide
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    {/* Preview below refinement UI */}
+                    <div className="mt-4">
+                      <label className="text-xs font-medium text-zinc-500 block mb-2">Current slide preview:</label>
+                      <div className="bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden" style={{ height: '300px' }}>
+                        <iframe
+                          srcDoc={slide.isolatedHtml}
+                          className="w-full h-full border-0"
+                          sandbox="allow-same-origin allow-scripts"
+                          title={`${slide.title} Preview`}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 ) : showCodeView[slide.id] ? (
                   /* Code View */
                   <div className="bg-zinc-950 border border-zinc-800 rounded-lg overflow-auto max-h-96">
@@ -308,13 +530,13 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                     </pre>
                   </div>
                 ) : (
-                  /* Preview */
+                  /* Preview - Using isolated HTML container */
                   <div className="bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden" style={{ height: '400px' }}>
                     <iframe
-                      srcDoc={slide.content}
+                      srcDoc={slide.isolatedHtml}
                       className="w-full h-full border-0"
-                      sandbox="allow-same-origin"
-                      title={`Slide ${index + 1} Preview`}
+                      sandbox="allow-same-origin allow-scripts"
+                      title={`${slide.title} Preview`}
                     />
                   </div>
                 )}
@@ -344,4 +566,5 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
   );
 };
 
+export { SlideEditor };
 export default SlideEditor;
