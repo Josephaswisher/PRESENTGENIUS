@@ -38,10 +38,14 @@ import {
   CloudArrowUpIcon,
   ChatBubbleLeftRightIcon,
   ShieldExclamationIcon,
-  WrenchScrewdriverIcon
+  WrenchScrewdriverIcon,
+  RectangleStackIcon,
+  ArrowDownTrayIcon,
+  CheckCircleIcon
 } from '@heroicons/react/24/outline';
 import { usePresentationHistoryStore, type Checkpoint } from '../stores/presentation-history.store';
 import { SlideChatPanel } from './presenter/SlideChatPanel';
+import { SlideTemplateLibrary } from './presenter/SlideTemplateLibrary';
 import { validateHtml, autoFixHtml, type ValidationResult, type ValidationWarning } from '../utils/html-validator';
 
 // ============================================================================
@@ -262,6 +266,9 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
   const [previewHtml, setPreviewHtml] = useState('');
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
+  const [selectedSlides, setSelectedSlides] = useState<Set<number>>(new Set());
+  const [lastSelectedSlide, setLastSelectedSlide] = useState<number | null>(null);
 
   // Parse slides on mount
   useEffect(() => {
@@ -570,6 +577,130 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
     }
   }, [slides, html, onUpdateHtml]);
 
+  // Template selection handler
+  const handleTemplateSelect = useCallback((templateHtml: string) => {
+    addSlide(templateHtml, currentSlide);
+    setShowTemplateLibrary(false);
+  }, [addSlide, currentSlide]);
+
+  // Multi-select handlers
+  const toggleSlideSelection = useCallback((index: number, shiftKey: boolean) => {
+    setSelectedSlides(prev => {
+      const newSet = new Set(prev);
+
+      if (shiftKey && lastSelectedSlide !== null) {
+        // Range selection
+        const start = Math.min(lastSelectedSlide, index);
+        const end = Math.max(lastSelectedSlide, index);
+        for (let i = start; i <= end; i++) {
+          newSet.add(i);
+        }
+      } else {
+        // Toggle single selection
+        if (newSet.has(index)) {
+          newSet.delete(index);
+        } else {
+          newSet.add(index);
+        }
+      }
+
+      return newSet;
+    });
+    setLastSelectedSlide(index);
+  }, [lastSelectedSlide]);
+
+  const selectAllSlides = useCallback(() => {
+    setSelectedSlides(new Set(slides.map((_, idx) => idx)));
+  }, [slides]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedSlides(new Set());
+    setLastSelectedSlide(null);
+  }, []);
+
+  // Batch operations
+  const deleteSelectedSlides = useCallback(() => {
+    if (selectedSlides.size === 0 || selectedSlides.size >= slides.length) return;
+
+    const newSlides = slides.filter((_, idx) => !selectedSlides.has(idx));
+    newSlides.forEach((slide, idx) => { slide.index = idx; });
+
+    setSlides(newSlides);
+    setSaveStatus('unsaved');
+    clearSelection();
+
+    if (currentSlide >= newSlides.length) {
+      setCurrentSlide(newSlides.length - 1);
+    }
+
+    if (onUpdateHtml) {
+      onUpdateHtml(reconstructHtml(newSlides, html));
+    }
+  }, [selectedSlides, slides, currentSlide, html, onUpdateHtml, clearSelection]);
+
+  const duplicateSelectedSlides = useCallback(() => {
+    if (selectedSlides.size === 0) return;
+
+    const sortedIndices = Array.from(selectedSlides).sort((a, b) => a - b);
+    const newSlides = [...slides];
+    const globalStyles = extractGlobalStyles(html);
+
+    // Insert duplicates after the last selected slide
+    const insertPoint = sortedIndices[sortedIndices.length - 1] + 1;
+    const duplicates: SlideInfo[] = sortedIndices.map((idx) => {
+      const original = slides[idx];
+      const newId = `slide-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      return {
+        id: newId,
+        index: 0, // Will be updated
+        title: `${original.title} (copy)`,
+        html: createIsolatedSlideHtml(original.rawContent, globalStyles),
+        rawContent: original.rawContent,
+        hasError: false
+      };
+    });
+
+    newSlides.splice(insertPoint, 0, ...duplicates);
+    newSlides.forEach((slide, idx) => { slide.index = idx; });
+
+    setSlides(newSlides);
+    setSaveStatus('unsaved');
+    clearSelection();
+
+    if (onUpdateHtml) {
+      onUpdateHtml(reconstructHtml(newSlides, html));
+    }
+  }, [selectedSlides, slides, html, onUpdateHtml, clearSelection]);
+
+  const exportSelectedSlides = useCallback(() => {
+    if (selectedSlides.size === 0) return;
+
+    const sortedIndices = Array.from(selectedSlides).sort((a, b) => a - b);
+    const globalStyles = extractGlobalStyles(html);
+
+    const exportHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exported Slides</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>${globalStyles}</style>
+</head>
+<body>
+${sortedIndices.map(idx => slides[idx].rawContent).join('\n\n')}
+</body>
+</html>`;
+
+    const blob = new Blob([exportHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `slides-export-${Date.now()}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [selectedSlides, slides, html]);
+
   // Auto-play
   useEffect(() => {
     if (isAutoPlay) {
@@ -687,6 +818,26 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
             setShowChatPanel(prev => !prev);
           }
           break;
+        case 't':
+        case 'T':
+          if (isEditMode && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setShowTemplateLibrary(prev => !prev);
+          }
+          break;
+        case 'a':
+          if ((e.ctrlKey || e.metaKey) && isEditMode && showThumbnails) {
+            e.preventDefault();
+            selectAllSlides();
+          }
+          break;
+        case 'Delete':
+        case 'Backspace':
+          if (isEditMode && showThumbnails && selectedSlides.size > 0) {
+            e.preventDefault();
+            deleteSelectedSlides();
+          }
+          break;
       }
       setShowControls(true);
       resetHideTimeout();
@@ -694,7 +845,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, nextSlide, prevSlide, goToFirst, goToLast, showThumbnails, isEditMode, showAddSlideModal, showEditSlideModal, showCheckpointModal, showRestoreModal, showChatPanel, handleUndo, handleRedo]);
+  }, [onClose, nextSlide, prevSlide, goToFirst, goToLast, showThumbnails, isEditMode, showAddSlideModal, showEditSlideModal, showCheckpointModal, showRestoreModal, showChatPanel, showTemplateLibrary, selectedSlides, handleUndo, handleRedo, selectAllSlides, deleteSelectedSlides]);
 
   // Fullscreen
   useEffect(() => {
@@ -902,6 +1053,15 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                   <PlusIcon className="w-5 h-5" />
                 </button>
 
+                {/* Template Library */}
+                <button
+                  onClick={() => setShowTemplateLibrary(!showTemplateLibrary)}
+                  className={`p-2 rounded-lg transition-colors ${showTemplateLibrary ? 'bg-cyan-500 text-white' : 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400'}`}
+                  title="Template Library (T)"
+                >
+                  <RectangleStackIcon className="w-5 h-5" />
+                </button>
+
                 {/* AI Chat Panel */}
                 <button
                   onClick={() => setShowChatPanel(!showChatPanel)}
@@ -1027,6 +1187,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
           <span>Ctrl+S Save</span>
           <span>G Overview</span>
           <span>E Edit</span>
+          {isEditMode && <span>T Templates</span>}
           {isEditMode && <span>C AI Chat</span>}
         </div>
       </div>
@@ -1049,25 +1210,82 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
       {/* Thumbnail Grid */}
       {showThumbnails && (
-        <div className="absolute inset-0 z-40 bg-black/95 backdrop-blur-sm overflow-auto p-8" onClick={() => !isEditMode && setShowThumbnails(false)}>
+        <div className="absolute inset-0 z-40 bg-black/95 backdrop-blur-sm overflow-auto p-8" onClick={() => { if (!isEditMode) setShowThumbnails(false); if (isEditMode && selectedSlides.size > 0) clearSelection(); }}>
           <div className="max-w-7xl mx-auto">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4">
                 <h3 className="text-white text-xl font-semibold">Slide Overview</h3>
                 {isEditMode && (
-                  <button onClick={(e) => { e.stopPropagation(); setShowAddSlideModal(true); }} className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg transition-colors text-sm">
-                    <PlusIcon className="w-4 h-4" />
-                    Add Slide
-                  </button>
+                  <>
+                    <button onClick={(e) => { e.stopPropagation(); setShowAddSlideModal(true); }} className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg transition-colors text-sm">
+                      <PlusIcon className="w-4 h-4" />
+                      Add Slide
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); setShowTemplateLibrary(true); }} className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-colors text-sm">
+                      <RectangleStackIcon className="w-4 h-4" />
+                      Templates
+                    </button>
+                  </>
                 )}
               </div>
-              <button onClick={() => setShowThumbnails(false)} className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors">
-                <XMarkIcon className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {isEditMode && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); selectAllSlides(); }}
+                    className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm"
+                  >
+                    Select All
+                  </button>
+                )}
+                <button onClick={() => { setShowThumbnails(false); clearSelection(); }} className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors">
+                  <XMarkIcon className="w-5 h-5" />
+                </button>
+              </div>
             </div>
+
+            {/* Batch Operations Toolbar */}
+            {isEditMode && selectedSlides.size > 0 && (
+              <div className="flex items-center gap-4 mb-4 p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-2">
+                  <CheckCircleIcon className="w-5 h-5 text-purple-400" />
+                  <span className="text-purple-400 font-medium">{selectedSlides.size} slide{selectedSlides.size > 1 ? 's' : ''} selected</span>
+                </div>
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    onClick={duplicateSelectedSlides}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg transition-colors text-sm"
+                  >
+                    <DocumentDuplicateIcon className="w-4 h-4" />
+                    Duplicate
+                  </button>
+                  <button
+                    onClick={exportSelectedSlides}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors text-sm"
+                  >
+                    <ArrowDownTrayIcon className="w-4 h-4" />
+                    Export
+                  </button>
+                  <button
+                    onClick={deleteSelectedSlides}
+                    disabled={selectedSlides.size >= slides.length}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <TrashIcon className="w-4 h-4" />
+                    Delete
+                  </button>
+                  <button
+                    onClick={clearSelection}
+                    className="px-3 py-1.5 text-zinc-400 hover:text-white transition-colors text-sm"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {slides.map((slide, idx) => (
                 <div key={slide.id} className={`relative aspect-video bg-zinc-900 rounded-lg overflow-hidden border-2 transition-all group ${
+                  selectedSlides.has(idx) ? 'border-purple-500 ring-2 ring-purple-500/50' :
                   slide.hasError ? 'border-red-500' :
                   idx === currentSlide ? 'border-cyan-500 ring-2 ring-cyan-500/50' : 'border-white/10 hover:border-white/30'
                 }`}>
@@ -1078,10 +1296,37 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                   ) : (
                     <iframe srcDoc={slide.html} className="w-full h-full pointer-events-none" title={`Slide ${idx + 1}`} sandbox="allow-same-origin" />
                   )}
-                  <div className="absolute inset-0 cursor-pointer" onClick={(e) => { e.stopPropagation(); goToSlide(idx); if (!isEditMode) setShowThumbnails(false); }} />
-                  <div className={`absolute top-2 left-2 px-2 py-0.5 rounded text-xs font-bold z-10 ${idx === currentSlide ? 'bg-cyan-500 text-white' : 'bg-black/70 text-white/70'}`}>
+                  <div
+                    className="absolute inset-0 cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (isEditMode && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+                        toggleSlideSelection(idx, e.shiftKey);
+                      } else {
+                        goToSlide(idx);
+                        if (!isEditMode) setShowThumbnails(false);
+                      }
+                    }}
+                  />
+                  <div className={`absolute top-2 left-2 px-2 py-0.5 rounded text-xs font-bold z-10 ${
+                    selectedSlides.has(idx) ? 'bg-purple-500 text-white' :
+                    idx === currentSlide ? 'bg-cyan-500 text-white' : 'bg-black/70 text-white/70'
+                  }`}>
                     {idx + 1}
                   </div>
+                  {/* Selection checkbox in edit mode */}
+                  {isEditMode && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleSlideSelection(idx, e.shiftKey); }}
+                      className={`absolute top-2 left-10 w-5 h-5 rounded border-2 flex items-center justify-center z-20 transition-all ${
+                        selectedSlides.has(idx)
+                          ? 'bg-purple-500 border-purple-500'
+                          : 'bg-black/50 border-white/30 opacity-0 group-hover:opacity-100'
+                      }`}
+                    >
+                      {selectedSlides.has(idx) && <CheckIcon className="w-3 h-3 text-white" />}
+                    </button>
+                  )}
                   <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/90 to-transparent">
                     <p className="text-white text-xs truncate">{slide.title}</p>
                   </div>
@@ -1358,6 +1603,14 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
         currentSlideTitle={currentSlideInfo?.title || ''}
         currentSlideIndex={currentSlide}
         onApplyHtml={handleChatApplyHtml}
+      />
+
+      {/* Slide Template Library */}
+      <SlideTemplateLibrary
+        isOpen={showTemplateLibrary}
+        onClose={() => setShowTemplateLibrary(false)}
+        onSelectTemplate={handleTemplateSelect}
+        currentSlideHtml={currentSlideInfo?.rawContent}
       />
     </div>
   );
