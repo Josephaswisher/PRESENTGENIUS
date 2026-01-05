@@ -95,7 +95,9 @@ For EACH question, provide in this exact JSON format:
 Return ONLY valid JSON, no markdown code blocks.`;
 
   try {
-    const response = await generateWithProvider(provider, prompt, [], {});
+    const response = await generateWithProvider(provider, prompt, [], {
+      outputFormat: 'json', // EXPLICIT: Request JSON format
+    });
     const parsed = parseQuestionsFromResponse(response, topic);
     return parsed;
   } catch (error) {
@@ -162,7 +164,9 @@ Return in JSON format:
 Return ONLY valid JSON.`;
 
   try {
-    const response = await generateWithProvider(provider, prompt, [], {});
+    const response = await generateWithProvider(provider, prompt, [], {
+      outputFormat: 'json', // EXPLICIT: Request JSON format
+    });
     return parseQuestionsFromResponse(response, 'Lecture Review');
   } catch (error) {
     console.error('Error generating questions from content:', error);

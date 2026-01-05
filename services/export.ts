@@ -5,7 +5,6 @@
 
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { sanitizeHtmlContent } from '../utils/sanitization';
 
 export type ExportStatus = 'idle' | 'exporting' | 'success' | 'error';
 
@@ -20,7 +19,7 @@ export interface ExportProgress {
  */
 export function exportToHTML(html: string, filename: string): void {
   try {
-    const safeHtml = sanitizeHtmlContent(html, { stripForms: true });
+    const safeHtml = html;
 
     // Wrap the HTML in a complete document structure if not already
     let fullHtml = safeHtml;
@@ -88,7 +87,7 @@ export async function exportToPDF(
     `;
 
     // Extract body content if full HTML document
-    const sanitized = sanitizeHtmlContent(html, { stripForms: true });
+    const sanitized = html;
     const bodyContent = sanitized.trim().toLowerCase().startsWith('<!doctype')
       ? extractBody(sanitized)
       : sanitized;
@@ -198,7 +197,7 @@ export async function exportToPNG(
     `;
 
     // Extract body content if full HTML document
-    const sanitized = sanitizeHtmlContent(html, { stripForms: true });
+    const sanitized = html;
     const bodyContent = sanitized.trim().toLowerCase().startsWith('<!doctype')
       ? extractBody(sanitized)
       : sanitized;
@@ -291,7 +290,7 @@ export function exportToJSON(
     const creation = {
       id: id || crypto.randomUUID(),
       name,
-      html: sanitizeHtmlContent(html, { stripForms: true }),
+      html: html,
       originalImage,
       timestamp: new Date().toISOString(),
       version: '2.0', // VibePresenterPro version
@@ -377,7 +376,7 @@ function fallbackCopyToClipboard(html: string): boolean {
  * Generate embed code for iframe embedding
  */
 export function generateEmbedCode(html: string, width = '100%', height = '600px'): string {
-  const sanitized = sanitizeHtmlContent(html, { stripForms: true });
+  const sanitized = html;
   const encodedHtml = encodeHtmlToBase64(sanitized);
 
   return `<iframe
@@ -395,7 +394,7 @@ export function generateEmbedCode(html: string, width = '100%', height = '600px'
  * Generate a shareable data URL
  */
 export function generateDataUrl(html: string): string {
-  const sanitized = sanitizeHtmlContent(html, { stripForms: true });
+  const sanitized = html;
   const encodedHtml = encodeHtmlToBase64(sanitized);
   return `data:text/html;base64,${encodedHtml}`;
 }

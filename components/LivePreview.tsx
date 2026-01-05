@@ -6,18 +6,17 @@
  * Includes multi-format export dropdown (HTML, PDF, JSON)
  */
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { ArrowDownTrayIcon, PlusIcon, ViewColumnsIcon, DocumentIcon, CodeBracketIcon, XMarkIcon, ChevronDownIcon, ClipboardDocumentIcon, PresentationChartBarIcon, PencilSquareIcon, DocumentDuplicateIcon, ChartBarIcon, SparklesIcon, DocumentTextIcon, RectangleStackIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, PlusIcon, ViewColumnsIcon, DocumentIcon, CodeBracketIcon, XMarkIcon, ChevronDownIcon, ClipboardDocumentIcon, PencilSquareIcon, DocumentDuplicateIcon, ChartBarIcon, SparklesIcon, DocumentTextIcon, RectangleStackIcon, PresentationChartBarIcon } from '@heroicons/react/24/outline';
 import { Creation } from './CreationHistory';
 import { exportToHTML, exportToPDF, exportToPNG, exportToJSON, copyToClipboard, type ExportProgress } from '../services/export';
-import { PresentationMode } from './PresentationMode';
 import { VisualEditor } from './editor/VisualEditor';
 import { CompanionMaterialsPanel } from './materials/CompanionMaterialsPanel';
 import { PollingPanel } from './polling/PollingPanel';
 import { AIEnhancementPanel } from './ai/AIEnhancementPanel';
 import { SlideEditor } from './SlideEditor';
 import { GlossaryPanel } from './GlossaryPanel';
+import { PresentationMode } from './PresentationMode';
 import { getScrollStyles } from '../utils/ios-scroll-fix';
-import { sanitizeHtmlContent } from '../utils/sanitization';
 import { KeyConcept } from '../services/content-analyzer';
 
 interface LivePreviewProps {
@@ -25,7 +24,6 @@ interface LivePreviewProps {
   isLoading: boolean;
   onReset: () => void;
   onUpdateHtml?: (html: string) => void; // Callback when HTML is edited
-  onPresent?: () => void; // Trigger presentation mode
   onPrintables?: () => void; // Open printables panel
   className?: string; // Allow parent to control layout
 }
@@ -126,20 +124,20 @@ const PdfRenderer = ({ dataUrl }: { dataUrl: string }) => {
   );
 };
 
-export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, onReset, onUpdateHtml, onPresent, onPrintables, className = '' }) => {
+export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, onReset, onUpdateHtml, onPrintables, className = '' }) => {
     const [loadingStep, setLoadingStep] = useState(0);
     const [showSplitView, setShowSplitView] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [exportFeedback, setExportFeedback] = useState<string | null>(null);
     const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
     const [isExporting, setIsExporting] = useState(false);
-    const [showPresentationMode, setShowPresentationMode] = useState(false);
     const [showVisualEditor, setShowVisualEditor] = useState(false);
     const [showMaterialsPanel, setShowMaterialsPanel] = useState(false);
     const [showPollingPanel, setShowPollingPanel] = useState(false);
     const [showAIPanel, setShowAIPanel] = useState(false);
     const [showSlideEditor, setShowSlideEditor] = useState(false);
     const [showGlossary, setShowGlossary] = useState(false);
+    const [showPresentationMode, setShowPresentationMode] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
 
     // Extract content structure from HTML data attribute
@@ -173,8 +171,8 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
         }
     }, [isLoading]);
 
-    const sanitizedHtml = useMemo(() => 
-        creation?.html ? sanitizeHtmlContent(creation.html, { stripForms: true }) : '',
+    const sanitizedHtml = useMemo(() =>
+        creation?.html || '',
       [creation?.html]);
 
     // Default to Split View when a new creation with an image is loaded
@@ -341,26 +339,6 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
                         </button>
                     )}
 
-                    {/* Edit Button */}
-                    <button
-                        onClick={() => setShowVisualEditor(true)}
-                        title="Edit Content"
-                        className={`flex items-center space-x-1 p-1.5 rounded-md transition-all ${showVisualEditor ? 'bg-blue-600 text-white' : 'text-zinc-500 hover:text-blue-400 hover:bg-zinc-800'}`}
-                    >
-                        <PencilSquareIcon className="w-4 h-4" />
-                        <span className="text-xs hidden md:inline">Edit</span>
-                    </button>
-
-                    {/* Slide Editor Button */}
-                    <button
-                        onClick={() => setShowSlideEditor(true)}
-                        title="Slide-by-Slide Editor"
-                        className={`flex items-center space-x-1 p-1.5 rounded-md transition-all ${showSlideEditor ? 'bg-cyan-600 text-white' : 'text-zinc-500 hover:text-cyan-400 hover:bg-zinc-800'}`}
-                    >
-                        <RectangleStackIcon className="w-4 h-4" />
-                        <span className="text-xs hidden md:inline">Slides</span>
-                    </button>
-
                     {/* AI Enhance Button */}
                     <button
                         onClick={() => setShowAIPanel(true)}
@@ -408,11 +386,11 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
                         <span className="text-xs hidden md:inline">Poll</span>
                     </button>
 
-                    {/* Present Button */}
+                    {/* Fullscreen Presentation Button */}
                     <button
-                        onClick={() => onPresent ? onPresent() : setShowPresentationMode(true)}
-                        title="Present (Fullscreen)"
-                        className="flex items-center space-x-1 p-1.5 rounded-md bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition-all"
+                        onClick={() => setShowPresentationMode(true)}
+                        title="Fullscreen Presentation (F)"
+                        className="flex items-center space-x-1 p-1.5 rounded-md bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-400 hover:from-cyan-500/30 hover:to-blue-500/30 transition-all"
                     >
                         <PresentationChartBarIcon className="w-4 h-4" />
                         <span className="text-xs hidden md:inline">Present</span>
@@ -568,15 +546,6 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
         ) : null}
       </div>
 
-      {/* Presentation Mode Overlay */}
-      {showPresentationMode && creation?.html && (
-        <PresentationMode
-          html={creation.html}
-          title={creation.name}
-          onClose={() => setShowPresentationMode(false)}
-        />
-      )}
-
       {/* Visual Editor Overlay */}
       {showVisualEditor && creation?.html && (
         <div className="absolute inset-0 z-50 bg-zinc-950">
@@ -687,6 +656,15 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
             </div>
           </div>
         </div>
+      )}
+
+      {/* Fullscreen Presentation Mode */}
+      {showPresentationMode && creation?.html && (
+        <PresentationMode
+          html={creation.html}
+          title={creation.name}
+          onClose={() => setShowPresentationMode(false)}
+        />
       )}
     </div>
   );

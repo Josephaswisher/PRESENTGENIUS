@@ -4,7 +4,6 @@
  * Note: Perplexity is accessed via MCP tools in Claude Code environment
  */
 
-import { escapeHtml, sanitizeUrl } from '../utils/sanitization';
 
 export interface ResearchResult {
   query: string;
@@ -191,8 +190,8 @@ export function createEvidenceBadge(result: ResearchResult): EvidenceBadge {
  */
 export function formatAMACitation(source: ResearchSource, index: number): string {
   const year = new Date().getFullYear();
-  const safeTitle = escapeHtml(source.title || 'Source');
-  const safeUrl = sanitizeUrl(source.url) || '';
+  const safeTitle = source.title || 'Source';
+  const safeUrl = source.url || '';
 
   switch (source.type) {
     case 'pubmed':

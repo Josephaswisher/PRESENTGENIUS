@@ -137,7 +137,7 @@ Remember: Respond with ONLY valid JSON, no markdown or explanations.
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.0-flash",
+      model: "gemini-3-flash-preview",
       contents: planPrompt,
       config: {
         systemInstruction: PLAN_SYSTEM_PROMPT,

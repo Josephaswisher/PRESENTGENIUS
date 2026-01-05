@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Additional presentation-specific styles */
+@layer components {
+  .slide {
+    @apply min-h-screen p-8;
+  }
+
+  .slide-title {
+    @apply text-4xl font-bold mb-6;
+  }
+
+  .slide-content {
+    @apply text-lg;
+  }
+}

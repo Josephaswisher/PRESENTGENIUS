@@ -175,9 +175,7 @@ Generate ONLY the title text, nothing else:`;
       provider,
       prompt,
       [], // No files
-      {
-        modelId: 'deepseek/deepseek-chat', // Fast, cost-effective model
-      }
+      {} // Use provider's default model
     );
 
     return response;

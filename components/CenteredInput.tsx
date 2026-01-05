@@ -26,8 +26,11 @@ export const CenteredInput: React.FC<CenteredInputProps> = ({
 }) => {
   const [prompt, setPrompt] = useState('');
   const [files, setFiles] = useState<File[]>([]);
-  const [provider, setProvider] = useState<AIProvider>('auto'); // Auto-select best provider
-  const [modelId, setModelId] = useState<string>('gemini-3.0-flash');
+  const [provider, setProvider] = useState<AIProvider>(() => {
+    const saved = localStorage.getItem('preferredProvider');
+    return (saved as AIProvider) || 'minimax'; // Default to MiniMax
+  });
+  const [modelId, setModelId] = useState<string>('MiniMax-M2.1');
   const [useParallel, setUseParallel] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -41,6 +44,7 @@ export const CenteredInput: React.FC<CenteredInputProps> = ({
   // Handle provider change and auto-select first model
   const handleProviderChange = (newProvider: AIProvider) => {
     setProvider(newProvider);
+    localStorage.setItem('preferredProvider', newProvider); // Save to localStorage
     const firstModel = PROVIDERS[newProvider]?.models?.[0];
     if (firstModel) {
       setModelId(firstModel.id);
@@ -52,6 +56,7 @@ export const CenteredInput: React.FC<CenteredInputProps> = ({
 
   const handleSubmit = () => {
     if (!prompt.trim() && files.length === 0) return;
+    console.log(`[CenteredInput] Submitting with provider: ${provider}`); // DEBUG
     onGenerate(prompt, files, provider, modelId, useParallel);
     setPrompt('');
     setFiles([]);

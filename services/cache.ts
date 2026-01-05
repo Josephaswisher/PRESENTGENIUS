@@ -5,7 +5,6 @@
  * Uses Supabase for persistent storage with localStorage fallback
  */
 import supabase, { isSupabaseConfigured } from '../lib/supabase/client';
-import { clampText, redactSensitive } from '../utils/sanitization';
 
 const CACHE_ENV_ENABLED = import.meta.env.VITE_ENABLE_PROMPT_CACHE === 'true';
 const USER_OPT_IN_KEY = 'presentgenius_prompt_cache_opt_in';
@@ -41,7 +40,8 @@ interface CacheEntry {
 
 // Simple hash function for prompts
 function sanitizeCacheText(input: string, maxLength: number): string {
-  return clampText(redactSensitive(input || ''), maxLength);
+  const text = input || '';
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
 }
 
 function hashPrompt(prompt: string, provider: string): string {

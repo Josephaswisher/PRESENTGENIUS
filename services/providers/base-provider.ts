@@ -16,6 +16,7 @@ export interface GenerationOptions {
   learnerLevel?: string;
   modelId?: string;
   useCitations?: boolean; // Enable Perplexity citation enhancement
+  outputFormat?: 'html' | 'json' | 'text'; // Expected output format (default: 'html')
 }
 
 export type ProgressCallback = (

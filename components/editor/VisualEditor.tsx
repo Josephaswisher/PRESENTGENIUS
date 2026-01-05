@@ -19,8 +19,8 @@ import {
   TrashIcon,
   QueueListIcon 
 } from '@heroicons/react/24/outline';
-import { generateWithProvider } from '../../services/ai-provider';
-import { sanitizeHtmlContent } from '../../utils/sanitization';
+import { MiniMaxProvider } from '../../services/providers/minimax';
+import type { AIProvider } from '../../services/ai-provider';
 
 export type EditorMode = 'preview' | 'blocks' | 'code';
 
@@ -107,8 +107,8 @@ export function VisualEditor({ html, onSave, onCancel }: VisualEditorProps) {
   };
 
   // AI Assistance
-  const previewHtml = useMemo(() => 
-    sanitizeHtmlContent(rawHtml || generateHtml(), { stripForms: true }),
+  const previewHtml = useMemo(() =>
+    rawHtml || generateHtml(),
     [rawHtml, generateHtml]
   );
 
@@ -126,7 +126,9 @@ export function VisualEditor({ html, onSave, onCancel }: VisualEditorProps) {
       
       Return ONLY valid JSON array of blocks: [{"type": "heading|paragraph|bullet", "content": "..."}]`;
 
-      const response = await generateWithProvider('gemini', prompt);
+      // Use MiniMax for inline AI assistance
+      const provider = new MiniMaxProvider();
+      const response = await provider.generate(prompt, [], {});
       const match = response.match(/\[[\s\S]*\]/);
       if (match) {
         const parsed = JSON.parse(match[0]);

@@ -7,7 +7,6 @@ import { CenteredInput } from './components/CenteredInput';
 import { LivePreview } from './components/LivePreview';
 import { ChatPanel, ChatMessage } from './components/ChatPanel';
 import { CreationHistory, Creation } from './components/CreationHistory';
-import { PresentationMode } from './components/PresentationMode';
 import { PrintablesPanel } from './components/PrintablesPanel';
 import { SupabaseDataViewer } from './components/SupabaseDataViewer';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -15,7 +14,7 @@ import { BrowserWarning } from './components/BrowserWarning';
 import { VersionHistory } from './components/VersionHistory';
 import { versionControl } from './services/version-control';
 import { FileInput } from './services/gemini';
-import { generateWithProvider, refineWithProvider, AIProvider, GenerationPhase, GenerationOptions } from './services/ai-provider';
+import { AIProvider, GenerationPhase, GenerationOptions } from './services/ai-provider';
 import { generateParallelCourse } from './services/parallel-generation';
 import { savePresentation, isSupabaseConfigured, savePromptHistory, deletePresentation, Presentation } from './services/supabase';
 import { backupPresentation, restoreGoogleDriveSession, isGoogleDriveConnected } from './services/google-drive';
@@ -28,7 +27,6 @@ import { useConfirm } from './hooks/useConfirm';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { InputDialog } from './components/InputDialog';
 import { loadHistory, saveHistory, mergeHistory, migrateOldStorage, getStorageStats } from './lib/storage';
-import { sanitizeHtmlContent } from './utils/sanitization';
 import { generateIntelligentTitle } from './services/title-generator';
 
 const App: React.FC = () => {
@@ -42,9 +40,9 @@ const App: React.FC = () => {
   const [isRegeneratingTitles, setIsRegeneratingTitles] = useState(false);
   const [isArchiveSidebarOpen, setIsArchiveSidebarOpen] = useState(false);
 
-  // AI Provider state
-  const [currentProvider, setCurrentProvider] = useState<AIProvider>('openrouter');
-  const [selectedModelId, setSelectedModelId] = useState<string>('deepseek/deepseek-chat');
+  // AI Provider state - simplified to MiniMax only
+  const [currentProvider, setCurrentProvider] = useState<AIProvider>('minimax');
+  const [selectedModelId, setSelectedModelId] = useState<string>('MiniMax-M2.1');
 
   // Chat panel resize state
   const [chatPanelWidth, setChatPanelWidth] = useState(512); // Default 32rem = 512px
@@ -57,10 +55,9 @@ const App: React.FC = () => {
   const [genProgress, setGenProgress] = useState(0);
   const [genMessage, setGenMessage] = useState('');
   const [streamingHtml, setStreamingHtml] = useState('');
-  const sanitizedStreamingHtml = useMemo(() => 
-    streamingHtml ? sanitizeHtmlContent(streamingHtml, { stripForms: true }) : '',
-    [streamingHtml]
-  );
+  // DON'T sanitize streaming HTML for maximum performance
+  // It's coming from our own trusted MiniMax provider
+  // Sanitization happens on final HTML only
 
   // Presentation mode
   const [showPresentation, setShowPresentation] = useState(false);
@@ -78,7 +75,7 @@ const App: React.FC = () => {
   const [showVersionHistory, setShowVersionHistory] = useState(false);
 
   const allowStreamingScripts = import.meta.env.VITE_ALLOW_IFRAME_SCRIPTS === 'true';
-  const streamingSandbox = allowStreamingScripts ? 'allow-scripts' : '';
+  const streamingSandbox = `${allowStreamingScripts ? 'allow-scripts ' : ''}allow-same-origin`;
 
   // Load history on mount
   useEffect(() => {
@@ -170,6 +167,7 @@ const App: React.FC = () => {
     modelId?: string,
     useParallel: boolean = false
   ) => {
+    console.log(`[App] handleGenerate called with provider: ${provider}`); // DEBUG
     const options: GenerationOptions = {
       modelId: modelId || 'MiniMax-M2.1',
     };
@@ -188,53 +186,18 @@ const App: React.FC = () => {
         processedFiles.push({ base64, mimeType: file.type.toLowerCase() });
       }
 
-      // Use parallel generation if enabled (5 agents working concurrently)
-      let html: string;
-      try {
-        html = useParallel
-          ? await generateParallelCourse(
-              promptText,
-              processedFiles,
-              provider,
-              (phase, progress, message, error, partialContent) => {
-                setGenPhase(phase as GenerationPhase);
-                setGenProgress(progress);
-                setGenMessage(message || '');
-                if (partialContent) setStreamingHtml(partialContent);
-              }
-            )
-          : await generateWithProvider(
-              provider,
-              promptText,
-              processedFiles,
-              options,
-              (phase, progress, message, error, partialContent) => {
-                setGenPhase(phase as GenerationPhase);
-                setGenProgress(progress);
-                setGenMessage(message || '');
-                if (partialContent) setStreamingHtml(partialContent);
-              }
-            );
-      } catch (parallelError: any) {
-        // If parallel generation fails, fall back to single-agent generation
-        if (useParallel) {
-          console.warn('⚠️ Parallel generation failed, falling back to single-agent:', parallelError);
-          setGenMessage('⚠️ Falling back to single-agent generation...');
-          html = await generateWithProvider(
-            provider,
-            promptText,
-            processedFiles,
-            options,
-            (phase, progress, message) => {
-              setGenPhase(phase as GenerationPhase);
-              setGenProgress(progress);
-              setGenMessage(message || '');
-            }
-          );
-        } else {
-          throw parallelError; // Re-throw if not parallel mode
+      // Always use parallel generation (multi-agent pipeline with flexible slide count)
+      const html = await generateParallelCourse(
+        promptText,
+        processedFiles,
+        provider,
+        (phase, progress, message, error, partialContent) => {
+          setGenPhase(phase as GenerationPhase);
+          setGenProgress(progress);
+          setGenMessage(message || '');
+          if (partialContent) setStreamingHtml(partialContent);
         }
-      }
+      );
 
       if (html) {
         const previewImage = processedFiles.length > 0
@@ -319,7 +282,7 @@ const App: React.FC = () => {
   const handleChatRefine = async (message: string, provider: AIProvider, modelId: string) => {
     if (!activeCreation) return;
 
-    console.log('🔵 [Chat Refinement] Starting refinement...');
+    console.log('🔵 [Chat Refinement] Starting refinement with parallel generation...');
     console.log('📝 User message:', message);
     console.log('📄 Current HTML length:', activeCreation.html.length);
     console.log('🤖 Provider:', provider);
@@ -329,79 +292,40 @@ const App: React.FC = () => {
     setIsRefining(true);
 
     try {
-      // Pass only the user's message - system context will be added by refineWithProvider
-      console.log('⏳ Calling refineWithProvider...');
-      const response = await refineWithProvider(provider, activeCreation.html, message, modelId);
-      console.log('✅ Received response, length:', response.length);
-      console.log('📦 Response preview:', response.substring(0, 200));
+      // Build refinement prompt for parallel generation
+      const refinementPrompt = `Previous presentation exists for: "${activeCreation.name}"
 
-      let cleanHtml = response;
-      let action: string | undefined;
+User's refinement request: "${message}"
 
-      // Robust action parsing
-      const actionMatch = response.match(/\[ACTION:(\w+)(?::([\s\S]*?))?\]/);
-      if (actionMatch) {
-        action = actionMatch[1];
-        // Capture everything between [ACTION:... ]
-        const fullActionTag = actionMatch[0];
-        cleanHtml = response.replace(fullActionTag, '').trim();
-      }
+Please generate an improved version of the presentation incorporating this feedback while maintaining the overall structure and quality.`;
 
-      // Final cleanup of the HTML (ensure it doesn't have markdown wrappers)
-      const htmlStart = cleanHtml.indexOf('<!DOCTYPE');
-      const htmlEnd = cleanHtml.lastIndexOf('</html>');
-      if (htmlStart !== -1 && htmlEnd !== -1) {
-        cleanHtml = cleanHtml.slice(htmlStart, htmlEnd + 7);
-      }
+      console.log('⏳ Regenerating with parallel pipeline...');
 
-      console.log('🔍 [Chat Refinement] HTML validation:', {
-        startsWithDoctype: cleanHtml.startsWith('<!DOCTYPE'),
-        includesHtml: cleanHtml.includes('<html'),
-        includesHtmlTag: cleanHtml.includes('<html>'),
-        cleanHtmlLength: cleanHtml.length,
-        cleanHtmlPreview: cleanHtml.substring(0, 100)
-      });
-
-      // Check if we have valid HTML to update
-      const hasValidHtml = cleanHtml.length > 100 && (
-        cleanHtml.startsWith('<!DOCTYPE') ||
-        cleanHtml.startsWith('<html') ||
-        cleanHtml.includes('<html') ||
-        cleanHtml.includes('</html>')
+      // Re-generate entire presentation with parallel pipeline
+      const refinedHtml = await generateParallelCourse(
+        refinementPrompt,
+        [], // No files for refinement
+        provider,
+        (phase, progress, msg, error, partialContent) => {
+          setGenPhase(phase as GenerationPhase);
+          setGenProgress(progress);
+          setGenMessage(msg || 'Refining presentation...');
+          if (partialContent) setStreamingHtml(partialContent);
+        }
       );
 
-      if (hasValidHtml && !action) {
-        console.log('✅ [Chat Refinement] Updating presentation with new HTML');
-        const updatedCreation = { ...activeCreation, html: cleanHtml };
-        setActiveCreation(updatedCreation);
-        setHistory(prev => prev.map(item => item.id === updatedCreation.id ? updatedCreation : item));
+      console.log('✅ Refinement complete, length:', refinedHtml.length);
 
-        setChatMessages(prev => [...prev, {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          text: "✅ I've updated the presentation as requested. You can see the changes in the live preview."
-        }]);
-      } else if (action === 'GENERATE_SLIDES') {
-        console.log('📋 [Chat Refinement] Action detected: GENERATE_SLIDES');
-        setChatMessages(prev => [...prev, {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          text: "That's a significant change! I'll need to rebuild the slide deck to accommodate that properly. Would you like me to go ahead and regenerate the outline?"
-        }]);
-      } else {
-        console.warn('⚠️ [Chat Refinement] No valid HTML detected, showing response as text');
-        console.log('Response type:', {
-          hasAction: !!action,
-          responseLength: response.length,
-          cleanHtmlLength: cleanHtml.length,
-          hasValidHtml
-        });
-        setChatMessages(prev => [...prev, {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          text: cleanHtml || "I've processed your request. (No HTML changes detected)"
-        }]);
-      }
+      // Update the presentation with regenerated HTML
+      const updatedCreation = { ...activeCreation, html: refinedHtml };
+      setActiveCreation(updatedCreation);
+      setHistory(prev => prev.map(item => item.id === updatedCreation.id ? updatedCreation : item));
+
+      setChatMessages(prev => [...prev, {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        text: "✅ I've regenerated the presentation with your requested changes. Check the live preview!"
+      }]);
 
     } catch (error: any) {
       console.error("❌ [Chat Refinement] Refinement failed:", error);
@@ -437,6 +361,8 @@ const App: React.FC = () => {
     } finally {
       console.log('🏁 [Chat Refinement] Finished (isRefining = false)');
       setIsRefining(false);
+      // Clear streaming preview
+      setStreamingHtml('');
     }
   };
 
@@ -808,15 +734,6 @@ const App: React.FC = () => {
         )}
       </div>
 
-      {/* Presentation Mode */}
-      {showPresentation && activeCreation && (
-        <PresentationMode
-          html={activeCreation.html}
-          title={activeCreation.name}
-          onClose={() => setShowPresentation(false)}
-        />
-      )}
-
       {/* Printables Panel */}
       {activeCreation && (
         <PrintablesPanel
@@ -866,10 +783,11 @@ const App: React.FC = () => {
             {/* Preview Content */}
             <div className="flex-1 overflow-hidden p-4">
               <iframe
-                srcDoc={sanitizedStreamingHtml}
+                srcDoc={streamingHtml}
                 className="w-full h-full bg-white rounded-lg"
                 sandbox={streamingSandbox}
                 title="Streaming Preview"
+                key={`stream-${streamingHtml.length}`}
               />
             </div>
           </div>

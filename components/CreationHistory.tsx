@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React from 'react';
-import { ClockIcon, ArrowRightIcon, DocumentIcon, PhotoIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { ArrowRightIcon, DocumentIcon, PhotoIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 export interface Creation {
   id: string;
@@ -31,14 +31,14 @@ export const CreationHistory: React.FC<CreationHistoryProps> = ({ history, onSel
 
   return (
     <div className="w-full animate-in fade-in slide-in-from-bottom-8 duration-700">
-      {/* Horizontal Scroll Container for Compact Layout */}
-      <div className="flex overflow-x-auto space-x-4 pb-2 px-2 scrollbar-hide">
+      {/* Vertical Scroll Container for Sidebar Layout */}
+      <div className="flex flex-col overflow-y-auto space-y-3 pb-2 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-zinc-900">
         {history.map((item) => {
           const isPdf = item.originalImage?.startsWith('data:application/pdf');
           return (
             <div
               key={item.id}
-              className="group flex-shrink-0 relative w-44 h-28"
+              className="group relative w-full h-28"
             >
               {/* Delete Button - Top Right Corner */}
               {onDelete && (

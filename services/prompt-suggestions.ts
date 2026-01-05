@@ -23,7 +23,7 @@ export class PromptSuggestionsService {
    * Generate fresh AI-powered prompt suggestions
    */
   async generateSuggestions(
-    provider: AIProvider = 'glm',
+    provider: AIProvider = 'minimax',
     count: number = 6
   ): Promise<SuggestionPrompt[]> {
     // Use cache if fresh
@@ -225,7 +225,7 @@ Generate ONLY the JSON array, no other text.`;
       provider,
       prompt,
       [], // No files
-      {} // Use provider defaults
+      { outputFormat: 'json' } // EXPLICIT: Request JSON format
     );
   }
 

@@ -168,7 +168,7 @@ export async function bringToLife(
     if (options.onProgress) {
       let accumulatedText = '';
 
-      const stream = await getAI().models.streamGenerateContent({
+      const stream = await getAI().models.generateContentStream({
         model: GEMINI_MODEL,
         contents: { parts },
         config: {

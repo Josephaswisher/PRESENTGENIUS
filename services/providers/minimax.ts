@@ -35,7 +35,96 @@ export class MiniMaxProvider extends BaseProvider {
   }
 
   /**
+   * Parse Server-Sent Events (SSE) stream from MiniMax API
+   * Uses OpenAI-compatible format: data: {"choices":[{"delta":{"content":"text"}}]}
+   */
+  private async parseSSEStream(
+    response: Response,
+    onProgress?: ProgressCallback,
+    startProgress: number = 30,
+    phase: string = 'minimax'
+  ): Promise<string> {
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Response body is not readable');
+
+    const decoder = new TextDecoder();
+    let accumulatedText = '';
+    let buffer = '';
+    let lastProgress = startProgress;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+
+          if (data === '[DONE]') {
+            console.log(`[MiniMax] Stream complete: ${accumulatedText.length} chars`);
+            return accumulatedText;
+          }
+
+          try {
+            const chunk = JSON.parse(data);
+            const content = chunk.choices?.[0]?.delta?.content || '';
+
+            if (content) {
+              accumulatedText += content;
+              // Log each chunk for debugging
+              if (accumulatedText.length % 500 < 100) {
+                console.log(`[MiniMax] 📥 Chunk received, total: ${accumulatedText.length} chars`);
+              }
+
+              // Update progress more frequently for visible streaming
+              const currentProgress = Math.min(
+                startProgress + Math.floor(accumulatedText.length / 200),
+                95
+              );
+
+              // Update every 2% (was 5%) for more visible streaming progress
+              if (currentProgress > lastProgress + 2) {
+                const kb = Math.round(accumulatedText.length / 1024);
+                console.log(`[MiniMax] 📥 Streaming progress: ${currentProgress}% (${kb}KB received)`);
+                onProgress?.(
+                  phase,
+                  currentProgress,
+                  `📥 Streaming... (${kb}KB received)`,
+                  undefined,
+                  accumulatedText  // Real-time preview
+                );
+                lastProgress = currentProgress;
+              }
+            }
+
+            // Check for completion
+            if (chunk.choices?.[0]?.finish_reason) {
+              console.log(`[MiniMax] Stream finished: ${chunk.choices[0].finish_reason}`);
+              return accumulatedText;
+            }
+          } catch (parseError) {
+            console.warn('[MiniMax] SSE parse error:', line.substring(0, 100), parseError);
+            continue;
+          }
+        }
+      }
+
+      return accumulatedText;
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  /**
    * Generate new presentation using MiniMax API
+   *
+   * @deprecated Direct usage deprecated. Use generateParallelCourse() instead.
+   * This method is now only called internally by the parallel generation pipeline.
    */
   async generate(
     prompt: string,
@@ -59,22 +148,44 @@ export class MiniMaxProvider extends BaseProvider {
       const messages: any[] = [
         {
           role: 'system',
-          content: `You are an expert medical educator creating interactive HTML presentations for Dr. Swisher's medical education platform.
+          content: `🚨 CRITICAL: You MUST return complete HTML with Tailwind CSS classes. NO plain text, NO markdown, ONLY HTML.
 
-OUTPUT STRUCTURE:
-- Create a complete, self-contained HTML document with embedded CSS and JavaScript
-- Use Tailwind CSS via CDN for styling
-- Structure content as DISCRETE SLIDES using semantic HTML
-- Each major topic/concept should be its own slide marked with an H1 or H2 heading
-- Use <section> or <article> tags to wrap each slide's content
-- The slide editor will parse headings (H1/H2) as slide boundaries
+You are an expert medical educator creating interactive HTML presentations.
 
-CONTENT GUIDELINES:
-- Focus on clarity, medical accuracy, and educational value
-- Create as many slides as needed to cover the topic comprehensively (no fixed number)
-- Each slide should have a clear focus and not be overcrowded
-- Use visual hierarchy: headings, bullet points, diagrams, and interactive elements
-- Make content visually engaging and interactive where appropriate
+MANDATORY OUTPUT FORMAT - THIS IS NON-NEGOTIABLE:
+1. Start with: <!DOCTYPE html>
+2. DO NOT include Tailwind CDN script tag (styles are pre-loaded)
+3. Use Tailwind classes for ALL styling (bg-gradient-to-br, text-4xl, p-8, rounded-xl, etc.)
+4. Structure as <section> tags with Tailwind classes
+5. NO plain text - ONLY HTML with Tailwind classes
+
+REQUIRED STRUCTURE:
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presentation Title</title>
+</head>
+<body class="bg-slate-950">
+    <section class="min-h-screen p-12 bg-gradient-to-br from-slate-900 to-slate-800">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-5xl font-black text-cyan-400 mb-8">Slide Title</h2>
+            <div class="space-y-6">
+                <!-- Content with Tailwind classes -->
+            </div>
+        </div>
+    </section>
+</body>
+</html>
+
+TAILWIND REQUIREMENTS:
+- Large headings: text-4xl, text-5xl, text-6xl, font-black
+- Colors: cyan-400, blue-400, slate-300, green-500, yellow-500, red-500
+- Spacing: p-8, p-12, space-y-6, space-y-8, mb-8
+- Backgrounds: bg-gradient-to-br, from-slate-900, to-slate-800
+- Cards: bg-slate-800/50, rounded-2xl, backdrop-blur-sm
+- Text: text-white, text-slate-300
 ${options.learnerLevel ? `- Target audience: ${options.learnerLevel}` : ''}
 ${options.activityId ? `- Activity type: ${options.activityId}` : ''}
 
@@ -487,11 +598,14 @@ ABSOLUTELY FORBIDDEN:
       onProgress?.('minimax', 24, '🧠 Enabling reasoning mode for better quality...');
       onProgress?.('minimax', 25, '🔗 Establishing connection to MiniMax API...');
 
-      const requestFn = async () => {
-        onProgress?.('minimax', 30, '📡 Sending request to MiniMax...');
-        onProgress?.('minimax', 35, '🤔 AI is reasoning through your request...');
+      let content = '';
 
-        const response = await fetch(this.config.endpoint, {
+      // Try streaming first (OpenAI-compatible SSE format)
+      try {
+        onProgress?.('minimax', 28, '🚀 Using streaming mode...');
+        console.log('[MiniMax] Attempting SSE streaming...');
+
+        const streamResponse = await fetch(this.config.endpoint, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${apiKey}`,
@@ -501,46 +615,77 @@ ABSOLUTELY FORBIDDEN:
             model: modelId,
             messages,
             temperature: 0.7,
-            // Enable reasoning mode for better quality
+            stream: true,  // Enable SSE streaming
             reasoning: true,
           }),
         });
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          console.error('❌ [MiniMax] API Error:', {
-            status: response.status,
-            error: errorData,
-          });
-          const error: any = new Error(
-            errorData.error?.message || `MiniMax API returned error status ${response.status}`
-          );
-          error.status = response.status;
-          error.statusCode = response.status;
-          throw error;
+        if (!streamResponse.ok) {
+          throw new Error(`HTTP ${streamResponse.status}: ${await streamResponse.text()}`);
         }
 
-        onProgress?.('minimax', 60, '📥 Receiving response from MiniMax...');
-        onProgress?.('minimax', 65, '📦 Downloading response data...');
-        return response.json();
-      };
+        content = await this.parseSSEStream(streamResponse, onProgress, 30, 'minimax');
+        console.log(`[MiniMax] Streaming successful: ${content.length} chars`);
 
-      const data = await this.makeRequestWithRetry(requestFn, onProgress);
+      } catch (streamError: any) {
+        console.warn('[MiniMax] Streaming failed, using standard mode:', streamError.message);
+        onProgress?.('minimax', 28, '📡 Using standard mode...');
 
-      onProgress?.('processing', 75, '🔍 Analyzing response structure...');
-      onProgress?.('processing', 78, '📝 Extracting HTML content...');
+        // Fallback to non-streaming
+        const requestFn = async () => {
+          onProgress?.('minimax', 30, '📡 Sending request to MiniMax...');
+          onProgress?.('minimax', 35, '🤔 AI is reasoning through your request...');
 
-      // Log reasoning details if available (MiniMax interleaved thinking)
-      const reasoningDetails = data.choices?.[0]?.message?.reasoning_details;
-      if (reasoningDetails) {
-        onProgress?.('processing', 80, `🧠 AI used ${reasoningDetails.thinking_tokens || 0} reasoning tokens`);
-        console.log('🧠 [MiniMax Reasoning]:', {
-          thinkingTokens: reasoningDetails.thinking_tokens,
-          reasoningSteps: reasoningDetails.steps?.length || 0,
-        });
+          const response = await fetch(this.config.endpoint, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages,
+              temperature: 0.7,
+              reasoning: true,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('❌ [MiniMax] API Error:', {
+              status: response.status,
+              error: errorData,
+            });
+            const error: any = new Error(
+              errorData.error?.message || `MiniMax API returned error status ${response.status}`
+            );
+            error.status = response.status;
+            error.statusCode = response.status;
+            throw error;
+          }
+
+          onProgress?.('minimax', 60, '📥 Receiving response from MiniMax...');
+          onProgress?.('minimax', 65, '📦 Downloading response data...');
+          return response.json();
+        };
+
+        const data = await this.makeRequestWithRetry(requestFn, onProgress);
+
+        onProgress?.('processing', 75, '🔍 Analyzing response structure...');
+        onProgress?.('processing', 78, '📝 Extracting HTML content...');
+
+        // Log reasoning details if available (MiniMax interleaved thinking)
+        const reasoningDetails = data.choices?.[0]?.message?.reasoning_details;
+        if (reasoningDetails) {
+          onProgress?.('processing', 80, `🧠 AI used ${reasoningDetails.thinking_tokens || 0} reasoning tokens`);
+          console.log('🧠 [MiniMax Reasoning]:', {
+            thinkingTokens: reasoningDetails.thinking_tokens,
+            reasoningSteps: reasoningDetails.steps?.length || 0,
+          });
+        }
+
+        content = data.choices?.[0]?.message?.content || '';
       }
-
-      const content = data.choices?.[0]?.message?.content || '';
       onProgress?.('processing', 85, `✅ Received ${content.length} characters`);
 
       onProgress?.('processing', 88, '🔎 Searching for HTML code blocks...');
@@ -549,6 +694,22 @@ ABSOLUTELY FORBIDDEN:
       const result = htmlMatch ? (htmlMatch[1] || htmlMatch[0]).trim() : content;
 
       onProgress?.('processing', 92, '✅ HTML extracted successfully');
+
+      // Validate Tailwind CSS presence
+      const hasTailwind = /class="[^"]*(?:text-|bg-|p-|rounded-|flex|grid|space-|gap-)/i.test(result);
+      const hasTailwindCDN = result.includes('cdn.tailwindcss.com');
+
+      if (!hasTailwind || !hasTailwindCDN) {
+        console.warn('⚠️ [MiniMax] Generated HTML may be missing Tailwind CSS!', {
+          hasTailwindClasses: hasTailwind,
+          hasTailwindCDN: hasTailwindCDN,
+          sampleStart: result.substring(0, 500)
+        });
+        onProgress?.('processing', 93, '⚠️ Warning: Output may be missing Tailwind styling');
+      } else {
+        onProgress?.('processing', 93, '✅ Tailwind CSS detected in output');
+      }
+
       onProgress?.('processing', 95, `📏 Final HTML size: ${result.length} characters`);
 
       onProgress?.('complete', 100, '✅ Generation complete!');
@@ -560,6 +721,9 @@ ABSOLUTELY FORBIDDEN:
 
   /**
    * Refine existing presentation using MiniMax API
+   *
+   * @deprecated Direct usage deprecated. Refinement now uses generateParallelCourse().
+   * This method is kept for legacy compatibility but should not be called directly.
    */
   async refine(
     currentHtml: string,
@@ -603,12 +767,30 @@ ABSOLUTELY FORBIDDEN:
       const messages = [
         {
           role: 'system',
-          content: `You are Dr. Swisher's Lecture Copilot, an expert at refining interactive medical education HTML presentations.
+          content: `🚨 CRITICAL: You MUST return complete HTML with Tailwind CSS classes. NO plain text, NO markdown, ONLY HTML.
 
-GUIDELINES:
+You are Dr. Swisher's Lecture Copilot, an expert at refining interactive medical education HTML presentations.
+
+MANDATORY OUTPUT FORMAT - THIS IS NON-NEGOTIABLE:
+1. Start with: <!DOCTYPE html>
+2. DO NOT include Tailwind CDN script tag (styles are pre-loaded)
+3. Use Tailwind classes for ALL styling (bg-gradient-to-br, text-4xl, p-8, rounded-xl, etc.)
+4. Structure as <section> tags with Tailwind classes
+5. NO plain text - ONLY HTML with Tailwind classes
+
+TAILWIND REQUIREMENTS (MANDATORY):
+- Large headings: text-4xl, text-5xl, text-6xl, font-black
+- Colors: cyan-400, blue-400, slate-300, green-500, yellow-500, red-500
+- Spacing: p-8, p-12, space-y-6, space-y-8, mb-8
+- Backgrounds: bg-gradient-to-br, from-slate-900, to-slate-800
+- Cards: bg-slate-800/50, rounded-2xl, backdrop-blur-sm
+- Text: text-white, text-slate-300
+
+REFINEMENT GUIDELINES:
 - Modify the HTML according to the user's instructions
 - Maintain medical accuracy and educational value
-- Preserve the existing Tailwind CSS styling and structure unless specifically asked to change it
+- PRESERVE all Tailwind CSS styling and structure unless specifically asked to change it
+- If adding new content, use the same Tailwind styling patterns
 - Keep the premium, professional medical aesthetic
 - Return ONLY the complete modified HTML document (no explanations or markdown formatting)
 ${wasTruncated ? '- NOTE: The HTML was truncated for transmission. Make refinements based on the visible content and preserve the overall structure.' : ''}
@@ -616,10 +798,10 @@ ${wasTruncated ? '- NOTE: The HTML was truncated for transmission. Make refineme
 CAPABILITIES:
 - Direct HTML refinement (text, styling, layout changes)
 - Medical content updates and corrections
-- UI/UX improvements
+- UI/UX improvements with Tailwind classes
 - Adding or removing sections based on requests
 
-Always prioritize clarity, medical accuracy, and educational effectiveness.`,
+Always prioritize clarity, medical accuracy, educational effectiveness, and TAILWIND CSS STYLING.`,
         },
         {
           role: 'user',
@@ -631,11 +813,14 @@ Always prioritize clarity, medical accuracy, and educational effectiveness.`,
       onProgress?.('minimax', 20, '🧠 Enabling reasoning mode...');
       onProgress?.('minimax', 22, '🔗 Connecting to MiniMax API...');
 
-      const requestFn = async () => {
-        onProgress?.('minimax', 25, '🎨 Sending refinement request...');
-        onProgress?.('minimax', 30, '🤔 AI is reasoning through refinement...');
+      let content = '';
 
-        const response = await fetch(this.config.endpoint, {
+      // Try streaming first (OpenAI-compatible SSE format)
+      try {
+        onProgress?.('minimax', 24, '🚀 Using streaming mode...');
+        console.log('[MiniMax] Attempting SSE streaming for refinement...');
+
+        const streamResponse = await fetch(this.config.endpoint, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${apiKey}`,
@@ -645,44 +830,75 @@ Always prioritize clarity, medical accuracy, and educational effectiveness.`,
             model: modelId,
             messages,
             temperature: 0.5,
-            // Enable reasoning mode for more precise refinements
+            stream: true,  // Enable SSE streaming
             reasoning: true,
           }),
         });
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          console.error('❌ [MiniMax] Refinement Error:', errorData);
-          const error: any = new Error(
-            errorData.error?.message || `MiniMax API returned error status ${response.status}`
-          );
-          error.status = response.status;
-          error.statusCode = response.status;
-          throw error;
+        if (!streamResponse.ok) {
+          throw new Error(`HTTP ${streamResponse.status}: ${await streamResponse.text()}`);
         }
 
-        onProgress?.('minimax', 60, '📥 Receiving refined content...');
-        onProgress?.('minimax', 65, '📦 Downloading response...');
-        return response.json();
-      };
+        content = await this.parseSSEStream(streamResponse, onProgress, 27, 'minimax');
+        console.log(`[MiniMax] Refinement streaming successful: ${content.length} chars`);
 
-      const data = await this.makeRequestWithRetry(requestFn, onProgress);
+      } catch (streamError: any) {
+        console.warn('[MiniMax] Refinement streaming failed, using standard mode:', streamError.message);
+        onProgress?.('minimax', 24, '📡 Using standard mode...');
 
-      onProgress?.('processing', 75, '🔍 Analyzing refined response...');
-      onProgress?.('processing', 78, '📝 Extracting updated HTML...');
+        // Fallback to non-streaming
+        const requestFn = async () => {
+          onProgress?.('minimax', 25, '🎨 Sending refinement request...');
+          onProgress?.('minimax', 30, '🤔 AI is reasoning through refinement...');
 
-      // Log reasoning details if available (MiniMax interleaved thinking)
-      const reasoningDetails = data.choices?.[0]?.message?.reasoning_details;
-      if (reasoningDetails) {
-        onProgress?.('processing', 80, `🧠 AI used ${reasoningDetails.thinking_tokens || 0} reasoning tokens`);
-        console.log('🧠 [MiniMax Reasoning - Refine]:', {
-          thinkingTokens: reasoningDetails.thinking_tokens,
-          reasoningSteps: reasoningDetails.steps?.length || 0,
-          instruction: instruction.substring(0, 50) + '...',
-        });
+          const response = await fetch(this.config.endpoint, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages,
+              temperature: 0.5,
+              reasoning: true,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('❌ [MiniMax] Refinement Error:', errorData);
+            const error: any = new Error(
+              errorData.error?.message || `MiniMax API returned error status ${response.status}`
+            );
+            error.status = response.status;
+            error.statusCode = response.status;
+            throw error;
+          }
+
+          onProgress?.('minimax', 60, '📥 Receiving refined content...');
+          onProgress?.('minimax', 65, '📦 Downloading response...');
+          return response.json();
+        };
+
+        const data = await this.makeRequestWithRetry(requestFn, onProgress);
+
+        onProgress?.('processing', 75, '🔍 Analyzing refined response...');
+        onProgress?.('processing', 78, '📝 Extracting updated HTML...');
+
+        // Log reasoning details if available (MiniMax interleaved thinking)
+        const reasoningDetails = data.choices?.[0]?.message?.reasoning_details;
+        if (reasoningDetails) {
+          onProgress?.('processing', 80, `🧠 AI used ${reasoningDetails.thinking_tokens || 0} reasoning tokens`);
+          console.log('🧠 [MiniMax Reasoning - Refine]:', {
+            thinkingTokens: reasoningDetails.thinking_tokens,
+            reasoningSteps: reasoningDetails.steps?.length || 0,
+            instruction: instruction.substring(0, 50) + '...',
+          });
+        }
+
+        content = data.choices?.[0]?.message?.content || '';
       }
-
-      const content = data.choices?.[0]?.message?.content || '';
       onProgress?.('processing', 85, `✅ Received ${content.length} characters`);
 
       onProgress?.('processing', 88, '🔎 Parsing HTML code blocks...');
@@ -691,6 +907,22 @@ Always prioritize clarity, medical accuracy, and educational effectiveness.`,
       const result = htmlMatch ? (htmlMatch[1] || htmlMatch[0]).trim() : content;
 
       onProgress?.('processing', 92, '✅ HTML parsed successfully');
+
+      // Validate Tailwind CSS presence
+      const hasTailwind = /class="[^"]*(?:text-|bg-|p-|rounded-|flex|grid|space-|gap-)/i.test(result);
+      const hasTailwindCDN = result.includes('cdn.tailwindcss.com');
+
+      if (!hasTailwind || !hasTailwindCDN) {
+        console.warn('⚠️ [MiniMax] Refined HTML may be missing Tailwind CSS!', {
+          hasTailwindClasses: hasTailwind,
+          hasTailwindCDN: hasTailwindCDN,
+          sampleStart: result.substring(0, 500)
+        });
+        onProgress?.('processing', 93, '⚠️ Warning: Output may be missing Tailwind styling');
+      } else {
+        onProgress?.('processing', 93, '✅ Tailwind CSS detected in output');
+      }
+
       onProgress?.('processing', 95, `📏 Final size: ${result.length} characters`);
 
       onProgress?.('complete', 100, '✅ Refinement complete!');
