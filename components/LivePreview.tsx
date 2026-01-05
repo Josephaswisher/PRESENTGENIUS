@@ -18,6 +18,8 @@ import { GlossaryPanel } from './GlossaryPanel';
 import { PresentationMode } from './PresentationMode';
 import { getScrollStyles } from '../utils/ios-scroll-fix';
 import { KeyConcept } from '../services/content-analyzer';
+import { createIsolatedSlideHtml } from '../services/html-import-formatter';
+import { parseIntoSlideContainers, type SlideContainer } from '../services/slide-refinement';
 
 interface LivePreviewProps {
   creation: Creation | null;
@@ -124,6 +126,105 @@ const PdfRenderer = ({ dataUrl }: { dataUrl: string }) => {
   );
 };
 
+type ViewMode = 'single' | 'slides';
+
+/**
+ * Individual Slide Preview Container with borders and tool buttons
+ */
+interface SlidePreviewContainerProps {
+    slide: SlideContainer;
+    index: number;
+    totalSlides: number;
+    onEdit: () => void;
+    previewSandbox: string;
+}
+
+const SlidePreviewContainer: React.FC<SlidePreviewContainerProps> = ({
+    slide,
+    index,
+    totalSlides,
+    onEdit,
+    previewSandbox
+}) => {
+    const [isHovered, setIsHovered] = useState(false);
+
+    return (
+        <div
+            className="bg-zinc-900/50 border border-zinc-700 rounded-xl overflow-hidden hover:border-cyan-500/50 transition-all duration-300 shadow-lg"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+        >
+            {/* Slide Header */}
+            <div className="flex items-center justify-between px-4 py-3 bg-zinc-800/50 border-b border-zinc-700">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center">
+                        <span className="text-sm font-bold text-cyan-400">{index + 1}</span>
+                    </div>
+                    <div>
+                        <h3 className="text-sm font-semibold text-zinc-200 truncate max-w-[200px]">
+                            {slide.title}
+                        </h3>
+                        <span className="text-xs text-zinc-500">Slide {index + 1} of {totalSlides}</span>
+                    </div>
+                </div>
+
+                {/* Tool Buttons - Always visible on hover */}
+                <div className={`flex items-center gap-2 transition-opacity duration-200 ${isHovered ? 'opacity-100' : 'opacity-50'}`}>
+                    <button
+                        onClick={onEdit}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-colors"
+                        title="Edit slide"
+                    >
+                        <PencilSquareIcon className="w-3.5 h-3.5" />
+                        Edit
+                    </button>
+                    <button
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg transition-colors"
+                        title="AI Refine"
+                    >
+                        <SparklesIcon className="w-3.5 h-3.5" />
+                        AI
+                    </button>
+                    <button
+                        className="p-1.5 text-zinc-400 hover:text-blue-400 hover:bg-zinc-700 rounded-lg transition-colors"
+                        title="Duplicate slide"
+                    >
+                        <DocumentDuplicateIcon className="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
+
+            {/* Slide Preview - Isolated iframe */}
+            <div className="relative bg-zinc-950" style={{ height: '400px' }}>
+                <iframe
+                    srcDoc={slide.html}
+                    className="w-full h-full border-0"
+                    sandbox={`${previewSandbox} allow-same-origin`}
+                    title={`Slide ${index + 1}: ${slide.title}`}
+                />
+
+                {/* Overlay gradient at bottom for visual separation */}
+                <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-zinc-900/50 to-transparent pointer-events-none" />
+            </div>
+
+            {/* Slide Footer with metadata */}
+            <div className="px-4 py-2 bg-zinc-800/30 border-t border-zinc-800 flex items-center justify-between">
+                <span className="text-xs text-zinc-500">
+                    ID: {slide.id}
+                </span>
+                {slide.modified && (
+                    <span className="text-xs text-cyan-400 flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                        Modified
+                    </span>
+                )}
+            </div>
+        </div>
+    );
+};
+
 export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, onReset, onUpdateHtml, onPrintables, className = '' }) => {
     const [loadingStep, setLoadingStep] = useState(0);
     const [showSplitView, setShowSplitView] = useState(false);
@@ -138,7 +239,24 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
     const [showSlideEditor, setShowSlideEditor] = useState(false);
     const [showGlossary, setShowGlossary] = useState(false);
     const [showPresentationMode, setShowPresentationMode] = useState(false);
+    const [viewMode, setViewMode] = useState<ViewMode>('slides'); // Default to slides view
+    const [slides, setSlides] = useState<SlideContainer[]>([]);
     const exportMenuRef = useRef<HTMLDivElement>(null);
+
+    // Parse slides when HTML changes
+    useEffect(() => {
+        if (creation?.html) {
+            try {
+                const parsedSlides = parseIntoSlideContainers(creation.html);
+                setSlides(parsedSlides);
+            } catch (error) {
+                console.error('[LivePreview] Error parsing slides:', error);
+                setSlides([]);
+            }
+        } else {
+            setSlides([]);
+        }
+    }, [creation?.html]);
 
     // Extract content structure from HTML data attribute
     const contentStructure = useMemo(() => {
@@ -329,6 +447,24 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
 
             {!isLoading && creation && (
                 <>
+                    {/* View Mode Toggle */}
+                    <div className="flex items-center bg-zinc-800 rounded-md p-0.5">
+                        <button
+                            onClick={() => setViewMode('single')}
+                            title="Single View"
+                            className={`px-2 py-1 rounded text-xs transition-all ${viewMode === 'single' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                        >
+                            Single
+                        </button>
+                        <button
+                            onClick={() => setViewMode('slides')}
+                            title="Slides View"
+                            className={`px-2 py-1 rounded text-xs transition-all ${viewMode === 'slides' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                        >
+                            Slides ({slides.length})
+                        </button>
+                    </div>
+
                     {creation.originalImage && (
                          <button
                             onClick={() => setShowSplitView(!showSplitView)}
@@ -530,17 +666,42 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
             )}
 
             {/* App Preview Panel */}
-            <div className={`relative h-full bg-white transition-all duration-500 overflow-hidden ${showSplitView && creation.originalImage ? 'w-full md:w-1/2 h-1/2 md:h-full' : 'w-full'}`}>
-                 <iframe
-                    title="Gemini Live Preview"
-                    srcDoc={sanitizedHtml}
-                    className="w-full h-full border-0"
-                    sandbox={previewSandbox}
-                    style={{
-                      touchAction: 'pan-y',
-                      ...getScrollStyles({ enableMomentum: true, direction: 'vertical' })
-                    }}
-                />
+            <div className={`relative h-full bg-zinc-950 transition-all duration-500 overflow-hidden ${showSplitView && creation.originalImage ? 'w-full md:w-1/2 h-1/2 md:h-full' : 'w-full'}`}>
+                {viewMode === 'single' ? (
+                    /* Single iframe view */
+                    <iframe
+                        title="Gemini Live Preview"
+                        srcDoc={sanitizedHtml}
+                        className="w-full h-full border-0 bg-white"
+                        sandbox={previewSandbox}
+                        style={{
+                            touchAction: 'pan-y',
+                            ...getScrollStyles({ enableMomentum: true, direction: 'vertical' })
+                        }}
+                    />
+                ) : (
+                    /* Multi-slide container view */
+                    <div
+                        className="h-full overflow-auto p-6 space-y-6"
+                        style={getScrollStyles({ enableMomentum: true, direction: 'vertical' })}
+                    >
+                        {slides.map((slide, index) => (
+                            <SlidePreviewContainer
+                                key={slide.id}
+                                slide={slide}
+                                index={index}
+                                totalSlides={slides.length}
+                                onEdit={() => setShowSlideEditor(true)}
+                                previewSandbox={previewSandbox}
+                            />
+                        ))}
+                        {slides.length === 0 && (
+                            <div className="flex items-center justify-center h-full text-zinc-500">
+                                <p>No slides found in presentation</p>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
           </>
         ) : null}
