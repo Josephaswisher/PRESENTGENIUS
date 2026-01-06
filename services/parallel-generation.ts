@@ -330,7 +330,7 @@ DECISION TREE FLOWCHART:
 ` : ''}
 
 HERO/HEADER SVG EXAMPLE (for top of slide):
-<svg viewBox="0 0 800 200" class="w-full h-48 rounded-lg mb-6">
+<svg viewBox="0 0 800 200" style="max-width: 800px; width: 100%; height: auto;" class="rounded-lg mb-6">
   <rect width="800" height="200" fill="url(#heroGrad)"/>
   <defs>
     <linearGradient id="heroGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -345,9 +345,23 @@ CRITICAL REQUIREMENTS:
 1. Generate AT LEAST 2 custom SVG graphics per slide (hero/header + detail/icon)
 2. SVGs must be inline in the HTML, not external files
 3. Use medical education best practices for clarity
-4. Ensure all text in SVGs is readable (minimum 12px font-size)
+4. SVG TEXT SIZING RULES (strictly enforce):
+   - Icon/decorative text: font-size="16" to "24"
+   - Diagram labels: font-size="12" to "18"
+   - Heading text in SVGs: font-size="24" to "48"
+   - NEVER exceed font-size="60" - text will overflow and look bad
 5. Test that SVGs render properly in modern browsers
 6. Use semantic grouping and IDs for interactive elements if needed
+
+STYLE OVERRIDE CLASSES (use when defaults conflict with your design intent):
+- .ai-light-theme: Force light background/dark text instead of default dark theme
+- .ai-dark-theme: Force dark background/light text
+- .ai-custom-bg: Remove background constraints to use your own
+- .ai-custom-padding: Remove padding constraints to use your own
+- .ai-custom-text: Remove text color constraints
+- .ai-custom-heading: Remove heading size/weight constraints
+- .ai-full-width: Make element truly full-width without max-width cap
+- .ai-no-max-width: Remove max-width constraint entirely
 
 DO NOT:
 - Use emojis (🫀, 🧠, etc.) - create proper SVG icons instead
@@ -575,29 +589,29 @@ function assembler(
         .slide,
         .slide-section,
         section {
-            font-size: clamp(14px, 1.5vw, 18px);
+            font-size: clamp(14px, 1.2vw, 16px);
             line-height: 1.6;
         }
 
         .slide h1,
         .slide-section h1 {
-            font-size: clamp(2rem, 5vw, 4rem);
+            font-size: clamp(2rem, 4vw, 3.5rem);
         }
 
         .slide h2,
         .slide-section h2 {
-            font-size: clamp(1.5rem, 4vw, 3rem);
+            font-size: clamp(1.5rem, 3vw, 2.5rem);
         }
 
         .slide h3,
         .slide-section h3 {
-            font-size: clamp(1.25rem, 3vw, 2rem);
+            font-size: clamp(1.25rem, 2.5vw, 1.875rem);
         }
 
         /* Responsive container padding */
         .slide .max-w-4xl,
         .slide-section .max-w-4xl {
-            padding: clamp(1rem, 3vw, 2rem);
+            padding: clamp(1rem, 2.5vw, 1.75rem);
         }
 
         .nav-item {
@@ -647,13 +661,13 @@ function assembler(
 
             .slide h1,
             .slide-section h1 {
-                font-size: clamp(1.5rem, 6vw, 2.5rem);
+                font-size: clamp(1.5rem, 5vw, 2.25rem);
                 margin-bottom: 1rem;
             }
 
             .slide h2,
             .slide-section h2 {
-                font-size: clamp(1.25rem, 5vw, 2rem);
+                font-size: clamp(1.25rem, 4vw, 1.875rem);
                 margin-bottom: 0.75rem;
             }
 
@@ -687,7 +701,7 @@ function assembler(
 
             .slide h1,
             .slide-section h1 {
-                font-size: clamp(2rem, 4.5vw, 3.5rem);
+                font-size: clamp(2rem, 4vw, 3rem);
             }
         }
 

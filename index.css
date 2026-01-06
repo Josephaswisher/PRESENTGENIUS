@@ -488,8 +488,8 @@
   }
 
   .mobile-split-panel {
-    width: 100% !important;
-    height: 50% !important;
+    width: 100%;
+    height: 50%;
   }
 }
 
@@ -877,4 +877,45 @@
   .grid-equal {
     grid-template-columns: 1fr;
   }
+}
+
+/* ============================================================================
+   AI OVERRIDE CLASSES - Allow AI to escape default styling
+   ============================================================================ */
+
+/* Use these classes when AI needs to override default presentation styles */
+.ai-custom-bg {
+  background: unset !important;
+}
+
+.ai-custom-padding {
+  padding: unset !important;
+}
+
+.ai-custom-text {
+  color: unset !important;
+}
+
+.ai-custom-heading {
+  font-size: unset !important;
+  font-weight: unset !important;
+}
+
+.ai-light-theme {
+  background: #ffffff !important;
+  color: #1f2937 !important;
+}
+
+.ai-dark-theme {
+  background: #0f172a !important;
+  color: #f1f5f9 !important;
+}
+
+.ai-full-width {
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+.ai-no-max-width {
+  max-width: none !important;
 }

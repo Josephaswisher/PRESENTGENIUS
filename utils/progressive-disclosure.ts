@@ -91,24 +91,24 @@ export function injectProgressiveDisclosureStyles(doc: Document): void {
   style.id = styleId;
   style.textContent = `
     .progressive-hidden {
-      opacity: 0 !important;
-      transform: translateY(20px) !important;
-      transition: opacity 300ms ease-out, transform 300ms ease-out !important;
-      pointer-events: none !important;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 300ms ease-out, transform 300ms ease-out;
+      pointer-events: none;
     }
 
     .progressive-visible {
-      opacity: 1 !important;
-      transform: translateY(0) !important;
-      transition: opacity 300ms ease-out, transform 300ms ease-out !important;
-      pointer-events: auto !important;
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 300ms ease-out, transform 300ms ease-out;
+      pointer-events: auto;
     }
 
     .progressive-disabled .progressive-hidden,
     .progressive-disabled .progressive-visible {
-      opacity: 1 !important;
-      transform: translateY(0) !important;
-      pointer-events: auto !important;
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
     }
   `;
 

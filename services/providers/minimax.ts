@@ -182,7 +182,7 @@ REQUIRED STRUCTURE:
 TAILWIND REQUIREMENTS:
 - Large headings: text-4xl, text-5xl, text-6xl, font-black
 - Colors: cyan-400, blue-400, slate-300, green-500, yellow-500, red-500
-- Spacing: p-8, p-12, space-y-6, space-y-8, mb-8
+- Spacing: p-6, p-8 (avoid p-12 - too large on mobile), space-y-4, space-y-6, mb-6
 - Backgrounds: bg-gradient-to-br, from-slate-900, to-slate-800
 - Cards: bg-slate-800/50, rounded-2xl, backdrop-blur-sm
 - Text: text-white, text-slate-300
@@ -781,7 +781,7 @@ MANDATORY OUTPUT FORMAT - THIS IS NON-NEGOTIABLE:
 TAILWIND REQUIREMENTS (MANDATORY):
 - Large headings: text-4xl, text-5xl, text-6xl, font-black
 - Colors: cyan-400, blue-400, slate-300, green-500, yellow-500, red-500
-- Spacing: p-8, p-12, space-y-6, space-y-8, mb-8
+- Spacing: p-6, p-8 (avoid p-12 - too large on mobile), space-y-4, space-y-6, mb-6
 - Backgrounds: bg-gradient-to-br, from-slate-900, to-slate-800
 - Cards: bg-slate-800/50, rounded-2xl, backdrop-blur-sm
 - Text: text-white, text-slate-300

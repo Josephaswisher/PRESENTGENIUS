@@ -9,8 +9,14 @@ export const PRESENTATION_CSS = `
 ::before, ::after { --tw-content: ''; }
 html { line-height: 1.5; -webkit-text-size-adjust: 100%; tab-size: 4; font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; font-feature-settings: normal; font-variation-settings: normal; }
 body { margin: 0; line-height: inherit; }
-h1, h2, h3, h4, h5, h6 { font-size: inherit; font-weight: inherit; }
-a { color: inherit; text-decoration: inherit; }
+h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 1rem; }
+h2 { font-size: 2rem; font-weight: 600; margin-bottom: 0.875rem; }
+h3 { font-size: 1.75rem; font-weight: 600; margin-bottom: 0.75rem; }
+h4 { font-size: 1.5rem; font-weight: 500; margin-bottom: 0.625rem; }
+h5 { font-size: 1.25rem; font-weight: 500; margin-bottom: 0.5rem; }
+h6 { font-size: 1rem; font-weight: 500; margin-bottom: 0.5rem; }
+a { color: #3b82f6; text-decoration: underline; }
+a:hover { color: #2563eb; }
 b, strong { font-weight: bolder; }
 p, ul, ol { margin: 0; padding: 0; }
 img, video, svg { display: block; max-width: 100%; height: auto; }

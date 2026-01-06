@@ -58,8 +58,8 @@ function extractGlobalStyles(html: string): string {
       min-height: 100vh;
       overflow-y: auto;
       overflow-x: hidden;
-      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-      color: #f1f5f9;
+      background: var(--slide-bg, #ffffff);
+      color: var(--slide-text, #1f2937);
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
       scroll-behavior: smooth;
     }
@@ -68,18 +68,14 @@ function extractGlobalStyles(html: string): string {
       display: flex;
       flex-direction: column;
       justify-content: center;
-      padding: 3rem 4rem;
+      padding: var(--slide-padding, 2rem);
     }
-    h1, h2, h3, h4, h5, h6 { color: #f1f5f9; }
-    h1 { font-size: 3rem; font-weight: 700; margin-bottom: 1rem; }
-    h2 { font-size: 2.25rem; font-weight: 600; margin-bottom: 0.75rem; }
-    h3 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }
-    p { font-size: 1.25rem; line-height: 1.75; margin-bottom: 1rem; color: #cbd5e1; }
+    p { line-height: 1.6; }
     ul, ol { padding-left: 2rem; margin-bottom: 1rem; }
-    li { font-size: 1.125rem; line-height: 1.75; margin-bottom: 0.5rem; color: #cbd5e1; }
+    li { line-height: 1.75; margin-bottom: 0.5rem; }
     img { max-width: 100%; height: auto; border-radius: 0.5rem; }
-    code { background: #1e293b; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-family: monospace; }
-    pre { background: #1e293b; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+    code { background: rgba(0,0,0,0.1); padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-family: monospace; }
+    pre { background: rgba(0,0,0,0.05); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
     .text-cyan-400, .text-cyan-500 { color: #22d3ee; }
     .text-blue-400, .text-blue-500 { color: #60a5fa; }
     .bg-gradient-to-br { background: linear-gradient(to bottom right, var(--tw-gradient-stops)); }
