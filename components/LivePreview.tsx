@@ -13,7 +13,7 @@ import { VisualEditor } from './editor/VisualEditor';
 import { CompanionMaterialsPanel } from './materials/CompanionMaterialsPanel';
 import { PollingPanel } from './polling/PollingPanel';
 import { AIEnhancementPanel } from './ai/AIEnhancementPanel';
-import { SlideEditor } from './SlideEditor';
+import SlideEditor from './SlideEditor';
 import { GlossaryPanel } from './GlossaryPanel';
 import { PresentationMode } from './PresentationMode';
 import { getScrollStyles } from '../utils/ios-scroll-fix';
@@ -157,7 +157,7 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
     }, [creation?.html]);
 
     const allowPreviewScripts = import.meta.env.VITE_ALLOW_IFRAME_SCRIPTS === 'true';
-    const previewSandbox = `${allowPreviewScripts ? 'allow-scripts ' : ''}allow-popups allow-modals`;
+    const previewSandbox = 'allow-scripts allow-same-origin allow-popups allow-modals allow-forms';
     // Handle loading animation steps
     useEffect(() => {
         if (isLoading) {
@@ -171,9 +171,20 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
         }
     }, [isLoading]);
 
-    const sanitizedHtml = useMemo(() =>
-        creation?.html || '',
-      [creation?.html]);
+    const sanitizedHtml = useMemo(() => {
+        const html = creation?.html || '';
+
+        // DEBUG: Log what LivePreview receives
+        if (html) {
+            console.log('🔍 [DEBUG LivePreview] RECEIVED HTML in props');
+            console.log('🔍 [DEBUG LivePreview] HTML length:', html.length, 'chars');
+            console.log('🔍 [DEBUG LivePreview] HTML first 500 chars:', html.substring(0, 500));
+            console.log('🔍 [DEBUG LivePreview] Starts with DOCTYPE?', html.trim().startsWith('<!DOCTYPE') ? '✅' : '❌');
+            console.log('🔍 [DEBUG LivePreview] Starts with { (JSON)?', html.trim().startsWith('{') ? '⚠️ YES - THIS IS JSON' : '✅ No');
+        }
+
+        return html;
+      }, [creation?.html]);
 
     // Default to Split View when a new creation with an image is loaded
     useEffect(() => {
@@ -286,33 +297,33 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
         ${className}
       `}
     >
-      {/* Minimal Technical Header */}
-      <div className="bg-[#121214] px-4 py-3 flex items-center justify-between border-b border-zinc-800 shrink-0">
-        {/* Left: Controls */}
-        <div className="flex items-center space-x-3 w-32">
+      {/* Enhanced Technical Header */}
+      <div className="bg-gradient-to-b from-[#121214] to-[#0E0E10] px-4 py-3.5 flex items-center justify-between border-b border-zinc-800/80 shrink-0 backdrop-blur-sm">
+        {/* Left: Enhanced Controls */}
+        <div className="flex items-center space-x-4 w-36">
            <div className="flex space-x-2 group/controls">
-                <button 
+                <button
                   onClick={onReset}
-                  className="w-3 h-3 rounded-full bg-zinc-700 group-hover/controls:bg-red-500 hover:!bg-red-600 transition-colors flex items-center justify-center focus:outline-none"
+                  className="w-3.5 h-3.5 rounded-full bg-zinc-700/80 group-hover/controls:bg-red-500 hover:!bg-red-600 hover:shadow-[0_0_8px_rgba(239,68,68,0.5)] transition-all duration-200 flex items-center justify-center focus:outline-none ring-0"
                   title="Close Preview"
                 >
-                  <XMarkIcon className="w-2 h-2 text-black opacity-0 group-hover/controls:opacity-100" />
+                  <XMarkIcon className="w-2 h-2 text-black opacity-0 group-hover/controls:opacity-100 transition-opacity duration-150" />
                 </button>
-                <div className="w-3 h-3 rounded-full bg-zinc-700 group-hover/controls:bg-yellow-500 transition-colors"></div>
-                <div className="w-3 h-3 rounded-full bg-zinc-700 group-hover/controls:bg-green-500 transition-colors"></div>
+                <div className="w-3.5 h-3.5 rounded-full bg-zinc-700/80 group-hover/controls:bg-yellow-500 hover:!bg-yellow-600 hover:shadow-[0_0_8px_rgba(234,179,8,0.5)] transition-all duration-200 cursor-default"></div>
+                <div className="w-3.5 h-3.5 rounded-full bg-zinc-700/80 group-hover/controls:bg-green-500 hover:!bg-green-600 hover:shadow-[0_0_8px_rgba(34,197,94,0.5)] transition-all duration-200 cursor-default"></div>
            </div>
         </div>
-        
-        {/* Center: Title */}
-        <div className="flex items-center space-x-2 text-zinc-500">
-            <CodeBracketIcon className="w-3 h-3" />
-            <span className="text-[11px] font-mono uppercase tracking-wider hidden sm:inline">
+
+        {/* Center: Enhanced Title */}
+        <div className="flex items-center space-x-2.5 text-zinc-400 group/title">
+            <CodeBracketIcon className="w-4 h-4 text-cyan-500/70 group-hover/title:text-cyan-400 transition-colors duration-200" />
+            <span className="text-xs font-mono uppercase tracking-widest hidden sm:inline font-medium text-zinc-300 group-hover/title:text-zinc-100 transition-colors duration-200">
                 {isLoading ? 'System Processing...' : creation ? creation.name : 'Preview Mode'}
             </span>
         </div>
 
-        {/* Right: Actions */}
-        <div className="flex items-center justify-end space-x-1 w-auto min-w-[140px]">
+        {/* Right: Enhanced Action Groups */}
+        <div className="flex items-center justify-end space-x-2 w-auto min-w-[160px]">
             {/* Export Progress/Feedback Toast */}
             {(exportFeedback || exportProgress) && (
                 <div className={`absolute top-12 right-4 ${
@@ -329,149 +340,169 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, o
 
             {!isLoading && creation && (
                 <>
+                    {/* View Controls Group */}
                     {creation.originalImage && (
                          <button
                             onClick={() => setShowSplitView(!showSplitView)}
                             title={showSplitView ? "Show App Only" : "Compare with Original"}
-                            className={`p-1.5 rounded-md transition-all ${showSplitView ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'}`}
+                            className={`p-2 rounded-lg transition-all duration-200 ${showSplitView ? 'bg-zinc-800 text-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.3)]' : 'text-zinc-500 hover:text-cyan-400 hover:bg-zinc-800/80 hover:shadow-[0_0_8px_rgba(34,211,238,0.2)]'}`}
                         >
                             <ViewColumnsIcon className="w-4 h-4" />
                         </button>
                     )}
 
-                    {/* AI Enhance Button */}
-                    <button
-                        onClick={() => setShowAIPanel(true)}
-                        title="AI Enhancements"
-                        className="flex items-center space-x-1 p-1.5 rounded-md text-zinc-500 hover:text-purple-400 hover:bg-zinc-800 transition-all"
-                    >
-                        <SparklesIcon className="w-4 h-4" />
-                        <span className="text-xs hidden md:inline">AI</span>
-                    </button>
+                    {/* Divider */}
+                    {creation.originalImage && <div className="h-6 w-px bg-zinc-700/50"></div>}
 
-                    {/* Glossary Button */}
-                    {contentStructure?.keyTerms && contentStructure.keyTerms.length > 0 && (
+                    {/* Content Tools Group */}
+                    <div className="flex items-center space-x-1">
+                        {/* AI Enhance Button */}
                         <button
-                            onClick={() => setShowGlossary(true)}
-                            title="Medical Glossary"
-                            className={`flex items-center space-x-1 p-1.5 rounded-md transition-all ${showGlossary ? 'bg-indigo-600 text-white' : 'text-zinc-500 hover:text-indigo-400 hover:bg-zinc-800'}`}
+                            onClick={() => setShowAIPanel(true)}
+                            title="AI Enhancements"
+                            className="flex items-center space-x-1.5 px-2.5 py-2 rounded-lg text-zinc-400 hover:text-purple-400 hover:bg-purple-500/10 hover:shadow-[0_0_8px_rgba(168,85,247,0.2)] transition-all duration-200 group"
                         >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                            </svg>
-                            <span className="text-xs hidden md:inline">Glossary</span>
-                            <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded-full font-semibold">
-                                {contentStructure.keyTerms.length}
-                            </span>
-                        </button>
-                    )}
-
-                    {/* Materials Button */}
-                    <button
-                        onClick={() => setShowMaterialsPanel(true)}
-                        title="Generate Companion Materials"
-                        className="flex items-center space-x-1 p-1.5 rounded-md text-zinc-500 hover:text-purple-400 hover:bg-zinc-800 transition-all"
-                    >
-                        <DocumentDuplicateIcon className="w-4 h-4" />
-                        <span className="text-xs hidden md:inline">Materials</span>
-                    </button>
-
-                    {/* Polling Button */}
-                    <button
-                        onClick={() => setShowPollingPanel(true)}
-                        title="Live Polling"
-                        className="flex items-center space-x-1 p-1.5 rounded-md text-zinc-500 hover:text-green-400 hover:bg-zinc-800 transition-all"
-                    >
-                        <ChartBarIcon className="w-4 h-4" />
-                        <span className="text-xs hidden md:inline">Poll</span>
-                    </button>
-
-                    {/* Fullscreen Presentation Button */}
-                    <button
-                        onClick={() => setShowPresentationMode(true)}
-                        title="Fullscreen Presentation (F)"
-                        className="flex items-center space-x-1 p-1.5 rounded-md bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-400 hover:from-cyan-500/30 hover:to-blue-500/30 transition-all"
-                    >
-                        <PresentationChartBarIcon className="w-4 h-4" />
-                        <span className="text-xs hidden md:inline">Present</span>
-                    </button>
-
-                    {/* Printables Button */}
-                    {onPrintables && (
-                      <button
-                          onClick={onPrintables}
-                          title="Generate Printables (Opus)"
-                          className="flex items-center space-x-1 p-1.5 rounded-md bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-400 hover:from-purple-500/30 hover:to-pink-500/30 transition-all"
-                      >
-                          <DocumentTextIcon className="w-4 h-4" />
-                          <span className="text-xs hidden md:inline">Printables</span>
-                      </button>
-                    )}
-
-                    {/* Export Dropdown */}
-                    <div className="relative" ref={exportMenuRef}>
-                        <button
-                            onClick={() => setShowExportMenu(!showExportMenu)}
-                            title="Export Options"
-                            className={`flex items-center space-x-1 p-1.5 rounded-md transition-all ${showExportMenu ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'}`}
-                        >
-                            <ArrowDownTrayIcon className="w-4 h-4" />
-                            <ChevronDownIcon className={`w-3 h-3 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+                            <SparklesIcon className="w-4 h-4 group-hover:animate-pulse" />
+                            <span className="text-xs hidden md:inline font-medium">AI</span>
                         </button>
 
-                        {/* Dropdown Menu */}
-                        {showExportMenu && !isExporting && (
-                            <div className="absolute right-0 top-full mt-1 w-48 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 overflow-hidden">
-                                <div className="py-1">
-                                    <button
-                                        onClick={handleExportHTML}
-                                        className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-                                    >
-                                        <CodeBracketIcon className="w-4 h-4 text-blue-400" />
-                                        <span>Download HTML</span>
-                                    </button>
-                                    <button
-                                        onClick={handleExportPDF}
-                                        className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-                                    >
-                                        <DocumentIcon className="w-4 h-4 text-red-400" />
-                                        <span>Export as PDF</span>
-                                    </button>
-                                    <button
-                                        onClick={handleExportPNG}
-                                        className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-                                    >
-                                        <DocumentIcon className="w-4 h-4 text-purple-400" />
-                                        <span>Export as PNG</span>
-                                    </button>
-                                    <button
-                                        onClick={handleExportJSON}
-                                        className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-                                    >
-                                        <DocumentIcon className="w-4 h-4 text-yellow-400" />
-                                        <span>Export JSON</span>
-                                    </button>
-                                    <div className="border-t border-zinc-700 my-1"></div>
-                                    <button
-                                        onClick={handleCopyToClipboard}
-                                        className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-                                    >
-                                        <ClipboardDocumentIcon className="w-4 h-4 text-green-400" />
-                                        <span>Copy to Clipboard</span>
-                                    </button>
-                                </div>
-                            </div>
+                        {/* Glossary Button */}
+                        {contentStructure?.keyTerms && contentStructure.keyTerms.length > 0 && (
+                            <button
+                                onClick={() => setShowGlossary(true)}
+                                title="Medical Glossary"
+                                className={`flex items-center space-x-1.5 px-2.5 py-2 rounded-lg transition-all duration-200 group ${showGlossary ? 'bg-indigo-600 text-white shadow-[0_0_12px_rgba(99,102,241,0.4)]' : 'text-zinc-400 hover:text-indigo-400 hover:bg-indigo-500/10 hover:shadow-[0_0_8px_rgba(99,102,241,0.2)]'}`}
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                                </svg>
+                                <span className="text-xs hidden md:inline font-medium">Glossary</span>
+                                <span className="text-[10px] bg-indigo-400/30 text-indigo-200 px-1.5 py-0.5 rounded-full font-bold min-w-[18px] text-center">
+                                    {contentStructure.keyTerms.length}
+                                </span>
+                            </button>
+                        )}
+
+                        {/* Materials Button */}
+                        <button
+                            onClick={() => setShowMaterialsPanel(true)}
+                            title="Generate Companion Materials"
+                            className="flex items-center space-x-1.5 px-2.5 py-2 rounded-lg text-zinc-400 hover:text-purple-400 hover:bg-purple-500/10 hover:shadow-[0_0_8px_rgba(168,85,247,0.2)] transition-all duration-200"
+                        >
+                            <DocumentDuplicateIcon className="w-4 h-4" />
+                            <span className="text-xs hidden md:inline font-medium">Materials</span>
+                        </button>
+
+                        {/* Polling Button */}
+                        <button
+                            onClick={() => setShowPollingPanel(true)}
+                            title="Live Polling"
+                            className="flex items-center space-x-1.5 px-2.5 py-2 rounded-lg text-zinc-400 hover:text-green-400 hover:bg-green-500/10 hover:shadow-[0_0_8px_rgba(34,197,94,0.2)] transition-all duration-200"
+                        >
+                            <ChartBarIcon className="w-4 h-4" />
+                            <span className="text-xs hidden md:inline font-medium">Poll</span>
+                        </button>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="h-6 w-px bg-zinc-700/50"></div>
+
+                    {/* Presentation Actions Group */}
+                    <div className="flex items-center space-x-1">
+                        {/* Fullscreen Presentation Button */}
+                        <button
+                            onClick={() => setShowPresentationMode(true)}
+                            title="Fullscreen Presentation (F)"
+                            className="flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-400 hover:from-cyan-500/30 hover:to-blue-500/30 hover:shadow-[0_0_12px_rgba(34,211,238,0.3)] transition-all duration-200 group"
+                        >
+                            <PresentationChartBarIcon className="w-4 h-4 group-hover:scale-110 transition-transform duration-200" />
+                            <span className="text-xs hidden md:inline font-medium">Present</span>
+                        </button>
+
+                        {/* Printables Button */}
+                        {onPrintables && (
+                          <button
+                              onClick={onPrintables}
+                              title="Generate Printables (Opus)"
+                              className="flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-400 hover:from-purple-500/30 hover:to-pink-500/30 hover:shadow-[0_0_12px_rgba(168,85,247,0.3)] transition-all duration-200 group"
+                          >
+                              <DocumentTextIcon className="w-4 h-4 group-hover:scale-110 transition-transform duration-200" />
+                              <span className="text-xs hidden md:inline font-medium">Printables</span>
+                          </button>
                         )}
                     </div>
 
-                    <button
-                        onClick={onReset}
-                        title="New Upload"
-                        className="ml-2 flex items-center space-x-1 text-xs font-bold bg-white text-black hover:bg-zinc-200 px-3 py-1.5 rounded-md transition-colors"
-                    >
-                        <PlusIcon className="w-3 h-3" />
-                        <span className="hidden sm:inline">New</span>
-                    </button>
+                    {/* Divider */}
+                    <div className="h-6 w-px bg-zinc-700/50"></div>
+
+                    {/* Export & New Actions Group */}
+                    <div className="flex items-center space-x-1">
+                        {/* Export Dropdown */}
+                        <div className="relative" ref={exportMenuRef}>
+                            <button
+                                onClick={() => setShowExportMenu(!showExportMenu)}
+                                title="Export Options"
+                                className={`flex items-center space-x-1.5 px-2.5 py-2 rounded-lg transition-all duration-200 ${showExportMenu ? 'bg-zinc-800 text-zinc-100 shadow-[0_0_10px_rgba(113,113,122,0.3)]' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 hover:shadow-[0_0_8px_rgba(113,113,122,0.2)]'}`}
+                            >
+                                <ArrowDownTrayIcon className="w-4 h-4" />
+                                <ChevronDownIcon className={`w-3 h-3 transition-transform duration-200 ${showExportMenu ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {showExportMenu && !isExporting && (
+                                <div className="absolute right-0 top-full mt-2 w-52 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700/80 rounded-xl shadow-2xl shadow-black/50 z-50 overflow-hidden">
+                                    <div className="py-1.5">
+                                        <button
+                                            onClick={handleExportHTML}
+                                            className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800/80 hover:text-white transition-all duration-150 group"
+                                        >
+                                            <CodeBracketIcon className="w-4 h-4 text-blue-400 group-hover:text-blue-300 transition-colors" />
+                                            <span className="font-medium">Download HTML</span>
+                                        </button>
+                                        <button
+                                            onClick={handleExportPDF}
+                                            className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800/80 hover:text-white transition-all duration-150 group"
+                                        >
+                                            <DocumentIcon className="w-4 h-4 text-red-400 group-hover:text-red-300 transition-colors" />
+                                            <span className="font-medium">Export as PDF</span>
+                                        </button>
+                                        <button
+                                            onClick={handleExportPNG}
+                                            className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800/80 hover:text-white transition-all duration-150 group"
+                                        >
+                                            <DocumentIcon className="w-4 h-4 text-purple-400 group-hover:text-purple-300 transition-colors" />
+                                            <span className="font-medium">Export as PNG</span>
+                                        </button>
+                                        <button
+                                            onClick={handleExportJSON}
+                                            className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800/80 hover:text-white transition-all duration-150 group"
+                                        >
+                                            <DocumentIcon className="w-4 h-4 text-yellow-400 group-hover:text-yellow-300 transition-colors" />
+                                            <span className="font-medium">Export JSON</span>
+                                        </button>
+                                        <div className="border-t border-zinc-700/80 my-1.5"></div>
+                                        <button
+                                            onClick={handleCopyToClipboard}
+                                            className="w-full flex items-center space-x-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800/80 hover:text-white transition-all duration-150 group"
+                                        >
+                                            <ClipboardDocumentIcon className="w-4 h-4 text-green-400 group-hover:text-green-300 transition-colors" />
+                                            <span className="font-medium">Copy to Clipboard</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* New Upload Button */}
+                        <button
+                            onClick={onReset}
+                            title="New Upload"
+                            className="flex items-center space-x-1.5 px-3.5 py-2 text-xs font-bold bg-gradient-to-r from-white to-zinc-100 text-black hover:from-zinc-100 hover:to-zinc-200 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-white/20 group"
+                        >
+                            <PlusIcon className="w-3.5 h-3.5 group-hover:rotate-90 transition-transform duration-200" />
+                            <span className="hidden sm:inline">New</span>
+                        </button>
+                    </div>
                 </>
             )}
         </div>

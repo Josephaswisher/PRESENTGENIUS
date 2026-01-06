@@ -55,11 +55,13 @@ function extractGlobalStyles(html: string): string {
   const defaultStyles = `
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
-      height: 100%;
-      overflow: auto;
+      min-height: 100vh;
+      overflow-y: auto;
+      overflow-x: hidden;
       background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
       color: #f1f5f9;
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      scroll-behavior: smooth;
     }
     section, .slide-section, .slide {
       min-height: 100vh;
@@ -81,13 +83,19 @@ function extractGlobalStyles(html: string): string {
     .text-cyan-400, .text-cyan-500 { color: #22d3ee; }
     .text-blue-400, .text-blue-500 { color: #60a5fa; }
     .bg-gradient-to-br { background: linear-gradient(to bottom right, var(--tw-gradient-stops)); }
-    button { cursor: pointer; }
+    button {
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0.75rem 1.5rem;
+      max-width: 100%;
+    }
     .quiz-option, .interactive-btn {
       background: rgba(255,255,255,0.1);
       border: 1px solid rgba(255,255,255,0.2);
-      padding: 1rem;
+      padding: 1rem 1.5rem;
       border-radius: 0.5rem;
       transition: all 0.2s;
+      font-size: 1.125rem;
     }
     .quiz-option:hover, .interactive-btn:hover {
       background: rgba(255,255,255,0.2);
@@ -184,6 +192,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
   onUpdateHtml
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showControls, setShowControls] = useState(true);
@@ -234,6 +243,23 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
   const goToFirst = useCallback(() => setCurrentSlide(0), []);
   const goToLast = useCallback(() => setCurrentSlide(totalSlides - 1), [totalSlides]);
+
+  // Scroll functions for up/down navigation within current slide
+  const scrollUp = useCallback(() => {
+    if (iframeRef.current?.contentWindow) {
+      const iframe = iframeRef.current;
+      const scrollAmount = 100; // pixels to scroll
+      iframe.contentWindow.scrollBy({ top: -scrollAmount, behavior: 'smooth' });
+    }
+  }, []);
+
+  const scrollDown = useCallback(() => {
+    if (iframeRef.current?.contentWindow) {
+      const iframe = iframeRef.current;
+      const scrollAmount = 100; // pixels to scroll
+      iframe.contentWindow.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+    }
+  }, []);
 
   // Slide management functions
   const addSlide = useCallback((htmlContent: string, afterIndex?: number) => {
@@ -373,6 +399,33 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
     }
   }, [isAutoPlay, autoPlayInterval, totalSlides]);
 
+  // Fullscreen control
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (error) {
+      console.error('Fullscreen error:', error);
+    }
+  }, []);
+
+  // Auto-hide controls
+  const resetHideTimeout = useCallback(() => {
+    if (hideControlsTimeout.current) {
+      clearTimeout(hideControlsTimeout.current);
+    }
+    hideControlsTimeout.current = setTimeout(() => {
+      if (!showThumbnails && !isEditMode) {
+        setShowControls(false);
+      }
+    }, 3000);
+  }, [showThumbnails, isEditMode]);
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -389,16 +442,52 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
             onClose();
           }
           break;
+        case 'ArrowUp':
+          e.preventDefault();
+          scrollUp();
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          scrollDown();
+          break;
         case 'ArrowRight':
         case ' ':
-        case 'PageDown':
           e.preventDefault();
           nextSlide();
           break;
         case 'ArrowLeft':
-        case 'PageUp':
           e.preventDefault();
           prevSlide();
+          break;
+        case 'PageDown':
+          e.preventDefault();
+          // Check if at bottom of current slide, if so go to next slide
+          if (iframeRef.current?.contentWindow) {
+            const win = iframeRef.current.contentWindow;
+            const isAtBottom = (win.innerHeight + win.scrollY) >= win.document.body.scrollHeight - 10;
+            if (isAtBottom) {
+              nextSlide();
+            } else {
+              scrollDown();
+            }
+          } else {
+            nextSlide();
+          }
+          break;
+        case 'PageUp':
+          e.preventDefault();
+          // Check if at top of current slide, if so go to previous slide
+          if (iframeRef.current?.contentWindow) {
+            const win = iframeRef.current.contentWindow;
+            const isAtTop = win.scrollY <= 10;
+            if (isAtTop) {
+              prevSlide();
+            } else {
+              scrollUp();
+            }
+          } else {
+            prevSlide();
+          }
           break;
         case 'Home':
           e.preventDefault();
@@ -444,15 +533,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, nextSlide, prevSlide, goToFirst, goToLast, showThumbnails, isEditMode, showAddSlideModal, showEditSlideModal]);
-
-  // Auto-enter fullscreen on mount
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      toggleFullscreen();
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
+  }, [onClose, nextSlide, prevSlide, goToFirst, goToLast, scrollUp, scrollDown, showThumbnails, isEditMode, showAddSlideModal, showEditSlideModal, toggleFullscreen, resetHideTimeout]);
 
   // Handle fullscreen changes
   useEffect(() => {
@@ -462,32 +543,6 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
-
-  const toggleFullscreen = async () => {
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
-      } else {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
-      }
-    } catch (error) {
-      console.error('Fullscreen error:', error);
-    }
-  };
-
-  // Auto-hide controls
-  const resetHideTimeout = useCallback(() => {
-    if (hideControlsTimeout.current) {
-      clearTimeout(hideControlsTimeout.current);
-    }
-    hideControlsTimeout.current = setTimeout(() => {
-      if (!showThumbnails && !isEditMode) {
-        setShowControls(false);
-      }
-    }, 3000);
-  }, [showThumbnails, isEditMode]);
 
   useEffect(() => {
     resetHideTimeout();
@@ -631,6 +686,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
       {/* Main Content - Current Slide in Isolated Iframe */}
       <iframe
+        ref={iframeRef}
         srcDoc={currentSlideHtml}
         className="w-full h-full border-none"
         title={`${title} - Slide ${currentSlide + 1}`}
@@ -724,10 +780,11 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
 
         {/* Keyboard Hints */}
         <div className="flex items-center justify-center gap-6 pb-3 text-white/40 text-xs">
-          <span>← → Navigate</span>
+          <span>← → Slides</span>
+          <span>↑ ↓ Scroll</span>
           <span>Space Next</span>
           <span>G Overview</span>
-          <span>E Edit Mode</span>
+          <span>E Edit</span>
           <span>P Auto-play</span>
           <span>Esc Exit</span>
         </div>
@@ -795,7 +852,7 @@ export const PresentationMode: React.FC<PresentationModeProps> = ({
                     srcDoc={slide.html}
                     className="w-full h-full pointer-events-none transform scale-100"
                     title={`Slide ${idx + 1} preview`}
-                    sandbox="allow-same-origin"
+                    sandbox="allow-scripts allow-same-origin allow-modals allow-forms"
                     style={{ transform: 'scale(1)', transformOrigin: 'top left' }}
                   />
 

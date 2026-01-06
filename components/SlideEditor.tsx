@@ -313,7 +313,7 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                     <iframe
                       srcDoc={slide.content}
                       className="w-full h-full border-0"
-                      sandbox="allow-same-origin"
+                      sandbox="allow-scripts allow-same-origin allow-modals allow-forms"
                       title={`Slide ${index + 1} Preview`}
                     />
                   </div>

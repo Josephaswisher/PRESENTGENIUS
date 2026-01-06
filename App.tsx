@@ -79,7 +79,7 @@ const App: React.FC = () => {
   const [showVersionHistory, setShowVersionHistory] = useState(false);
 
   const allowStreamingScripts = import.meta.env.VITE_ALLOW_IFRAME_SCRIPTS === 'true';
-  const streamingSandbox = `${allowStreamingScripts ? 'allow-scripts ' : ''}allow-same-origin`;
+  const streamingSandbox = 'allow-scripts allow-same-origin allow-popups allow-modals allow-forms';
 
   // Load history on mount
   useEffect(() => {
@@ -204,6 +204,14 @@ const App: React.FC = () => {
       );
 
       if (html) {
+        // DEBUG: Log what HTML we received
+        console.log('🔍 [DEBUG App.tsx] RECEIVED HTML from generateParallelCourse');
+        console.log('🔍 [DEBUG App.tsx] HTML type:', typeof html);
+        console.log('🔍 [DEBUG App.tsx] HTML length:', html.length, 'chars');
+        console.log('🔍 [DEBUG App.tsx] HTML first 500 chars:', html.substring(0, 500));
+        console.log('🔍 [DEBUG App.tsx] Starts with DOCTYPE?', html.trim().startsWith('<!DOCTYPE') ? '✅' : '❌');
+        console.log('🔍 [DEBUG App.tsx] Starts with { (JSON)?', html.trim().startsWith('{') ? '⚠️ YES - THIS IS THE PROBLEM' : '✅ No');
+
         const previewImage = processedFiles.length > 0
           ? `data:${processedFiles[0].mimeType};base64,${processedFiles[0].base64}`
           : undefined;

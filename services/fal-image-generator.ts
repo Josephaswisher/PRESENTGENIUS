@@ -1,6 +1,16 @@
 /**
  * FAL AI Image Generation Service
  * Generates images using FAL API for presentations
+ *
+ * ⚠️ STATUS: DISABLED (January 2026)
+ * This service is currently disabled in favor of inline SVG graphics generation.
+ * External image API calls have been removed from parallel-generation.ts.
+ *
+ * This file is preserved for potential future use if external image generation
+ * is needed again. To re-enable:
+ * 1. Uncomment the import in parallel-generation.ts (line 16)
+ * 2. Uncomment the generateChapterImages() call (lines 155-167)
+ * 3. Update the imageUrlsText to use external images instead of SVG guidelines
  */
 
 // FAL API Configuration

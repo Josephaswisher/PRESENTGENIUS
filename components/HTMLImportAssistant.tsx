@@ -282,7 +282,7 @@ const HTMLImportAssistant: React.FC<HTMLImportAssistantProps> = ({
                               srcDoc={section.formattedHtml}
                               className="w-full h-full border-0"
                               style={{ minHeight: '100%' }}
-                              sandbox="allow-same-origin"
+                              sandbox="allow-scripts allow-same-origin allow-modals allow-forms"
                               title={`Preview Section ${index + 1}`}
                             />
                           </div>

@@ -12,7 +12,8 @@ import { MiniMaxProvider, BaseProvider } from './providers';
 import type { FileInput, ProgressCallback } from './providers';
 import type { AIProvider } from './ai-provider';
 import { getPresentationStyleTag } from '../utils/presentation-styles';
-import { generateChapterImages, type GeneratedImage } from './fal-image-generator';
+// DISABLED: External image generation using FAL API
+// import { generateChapterImages, type GeneratedImage } from './fal-image-generator';
 
 /**
  * Curriculum outline structure returned by Architect Agent
@@ -103,21 +104,74 @@ Return ONLY the JSON, no other text.`;
       onProgress
     );
 
+    // DEBUG: Log raw architect response
+    console.log('🔍 [DEBUG] RAW ARCHITECT RESPONSE (first 1000 chars):', response.substring(0, 1000));
+    console.log('🔍 [DEBUG] Response type:', typeof response);
+    console.log('🔍 [DEBUG] Response length:', response.length, 'chars');
+
     onProgress?.('architect', 18, '🔍 Parsing curriculum structure...');
     onProgress?.('architect', 22, '📋 Validating chapter organization...');
 
-    // Extract JSON from response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    // Strip markdown code blocks if present (```json ... ``` or ``` ... ```)
+    let cleanedResponse = response.trim();
+    if (cleanedResponse.startsWith('```')) {
+      // Remove opening markdown fence (```json or ``` or ```javascript)
+      cleanedResponse = cleanedResponse.replace(/^```(?:json|javascript|js)?\n?/, '');
+      // Remove closing markdown fence
+      cleanedResponse = cleanedResponse.replace(/\n?```\s*$/, '');
+      console.log('🔍 [DEBUG] Stripped markdown code blocks from Architect response');
+    }
+
+    // Extract JSON from response with better error handling
+    const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error('Architect Agent failed to return valid JSON');
+      console.error('❌ [Architect] No JSON found in response');
+      console.error(`Response preview: ${response.substring(0, 500)}...`);
+      throw new Error('Architect Agent failed to return valid JSON. The AI response did not contain a JSON object. Please try again.');
     }
 
-    const outline = JSON.parse(jsonMatch[0]) as CurriculumOutline;
-
-    // Validate outline has slides
-    if (!outline.slides || outline.slides.length === 0) {
-      throw new Error('Curriculum must have at least one slide');
+    let outline: CurriculumOutline;
+    try {
+      outline = JSON.parse(jsonMatch[0]) as CurriculumOutline;
+    } catch (parseError: any) {
+      console.error('❌ [Architect] JSON parsing failed:', parseError);
+      console.error(`JSON preview: ${jsonMatch[0].substring(0, 500)}...`);
+      throw new Error(`Architect Agent returned malformed JSON: ${parseError.message}. Please try again.`);
     }
+
+    // Validate outline structure
+    if (!outline || typeof outline !== 'object') {
+      throw new Error('Architect Agent returned invalid curriculum structure. Expected an object.');
+    }
+
+    if (!outline.title || typeof outline.title !== 'string') {
+      console.warn('⚠️ [Architect] Missing or invalid title, using default');
+      outline.title = 'Medical Presentation';
+    }
+
+    if (!outline.slides || !Array.isArray(outline.slides)) {
+      throw new Error('Curriculum must include a "slides" array.');
+    }
+
+    if (outline.slides.length === 0) {
+      throw new Error('Curriculum must have at least one slide. Please try again with a more detailed prompt.');
+    }
+
+    // Validate each slide has required fields
+    outline.slides.forEach((slide, index) => {
+      if (!slide.title) {
+        slide.title = `Slide ${index + 1}`;
+      }
+      if (!slide.description) {
+        slide.description = 'Educational content';
+      }
+      if (!slide.keyTopics || !Array.isArray(slide.keyTopics)) {
+        slide.keyTopics = [];
+      }
+      if (!slide.interactionType) {
+        slide.interactionType = 'diagram';
+      }
+    });
 
     console.log('✅ [Architect] Curriculum outline:', outline);
     console.log(`✅ [Architect] Generated ${outline.slides.length} slides`);
@@ -148,36 +202,161 @@ async function slideBuilderAgent(
 
   onProgress?.('builder', baseProgress + 2, `🔨 Agent ${agentId}: Analyzing "${slide.title}" requirements...`);
 
-  // Generate AI images for this slide
-  onProgress?.('builder', baseProgress + 3, `🎨 Agent ${agentId}: Generating AI images...`);
-  let slideImages: Record<string, GeneratedImage> | null = null;
-  try {
-    slideImages = await generateChapterImages(
-      slide.title,
-      slide.description,
-      slide.keyTopics,
-      slide.interactionType
-    );
-    console.log(`✅ [Builder ${agentId}] Generated ${Object.keys(slideImages).length} images for "${slide.title}"`);
-  } catch (error: any) {
-    console.warn(`⚠️ [Builder ${agentId}] Image generation failed, using placeholders:`, error.message);
-  }
+  // DISABLED: External image generation (FAL API)
+  // User requested inline SVG graphics instead of external API calls
+  // TODO: If external images needed in future, restore generateChapterImages() call
+  //
+  // onProgress?.('builder', baseProgress + 3, `🎨 Agent ${agentId}: Generating AI images...`);
+  // let slideImages: Record<string, GeneratedImage> | null = null;
+  // try {
+  //   slideImages = await generateChapterImages(
+  //     slide.title,
+  //     slide.description,
+  //     slide.keyTopics,
+  //     slide.interactionType
+  //   );
+  //   console.log(`✅ [Builder ${agentId}] Generated ${Object.keys(slideImages).length} images for "${slide.title}"`);
+  // } catch (error: any) {
+  //   console.warn(`⚠️ [Builder ${agentId}] Image generation failed, using placeholders:`, error.message);
+  // }
 
-  onProgress?.('builder', baseProgress + 4, `🔨 Agent ${agentId}: Building ${slide.interactionType} interaction...`);
+  onProgress?.('builder', baseProgress + 4, `🔨 Agent ${agentId}: Building ${slide.interactionType} interaction with SVG graphics...`);
 
-  // Prepare image URLs for the prompt
-  const imageUrlsText = slideImages
-    ? `
-GENERATED IMAGES (use these instead of emojis):
-- Hero Image: ${slideImages.hero?.url || 'none'}
-- Icon: ${slideImages.icon?.url || 'none'}
-- Topic Image 1: ${slideImages.topic1?.url || 'none'}
-- Topic Image 2: ${slideImages.topic2?.url || 'none'}
+  // Force SVG graphics generation (no external images)
+  const slideImages = null;
 
-IMPORTANT: Use <img> tags with these URLs instead of emojis. Example:
-<img src="${slideImages.hero?.url}" alt="${slide.title}" class="w-full h-64 object-cover rounded-lg mb-6">
-`
-    : 'No images available - use simple CSS shapes or SVG instead of emojis.';
+  // Comprehensive SVG graphics generation instructions
+  const imageUrlsText = `
+SVG GRAPHICS STRATEGY:
+Use inline SVG graphics strategically to enhance understanding and aesthetics. NO external images, NO emojis, NO placeholders.
+
+WHEN TO USE SVGs:
+1. Medical diagrams that aid understanding (anatomy, pathways, processes)
+2. Charts and data visualizations (flowcharts, decision trees, timelines)
+3. Icons and visual indicators (quiz symbols, status indicators, interaction cues)
+4. Decorative elements that enhance aesthetics (headers, dividers, backgrounds)
+
+WHEN NOT TO USE SVGs:
+- Don't force SVGs where they don't add value
+- Text-heavy content doesn't need graphics
+- Simple concepts may not need visual aids
+
+MEDICAL SVG ILLUSTRATION GUIDELINES:
+1. Use anatomically accurate representations where applicable
+2. Professional medical textbook illustration style
+3. Clean lines, proper proportions, educational clarity
+4. Include labels and annotations for medical diagrams
+5. Keep it simple and focused on educational value
+
+SVG TECHNICAL REQUIREMENTS:
+- Use inline <svg> elements with proper viewBox (e.g., viewBox="0 0 800 600")
+- SIZING GUIDELINES:
+  * Small icons/decorative graphics: Use fixed pixel sizes (width="80" height="80") or Tailwind classes (class="w-16 h-16" or "w-20 h-20")
+  * Medium graphics/charts: Add max-width constraint (style="max-width: 400px; width: 100%; height: auto")
+  * Large diagrams/full-width images: Add max-width cap (style="max-width: 800px; width: 100%; height: auto")
+  * NEVER use width="100%" or class="w-full" alone without a max-width - graphics will blow up too large!
+- Accessibility: Include descriptive <title> and <desc> tags inside SVG
+- Use <g> groups for logical sections
+- Semantic naming for IDs and classes
+
+MEDICAL COLOR PALETTE (Professional Clinical Style):
+- Arteries/Oxygenated: #ef4444 (red-500) or #dc2626 (red-600)
+- Veins/Deoxygenated: #3b82f6 (blue-500) or #2563eb (blue-600)
+- Organs: #f59e0b (amber-500), #f97316 (orange-500)
+- Bones: #f5f5f4 (stone-100) with #78716c (stone-500) outlines
+- Muscles: #dc2626 (red-600) at 80% opacity
+- Nerves: #eab308 (yellow-500)
+- Normal/Healthy: #10b981 (emerald-500)
+- Warning/Abnormal: #f59e0b (amber-500)
+- Critical/Danger: #ef4444 (red-500)
+- Background: #1e293b (slate-800) or transparent
+- Borders/Outlines: #475569 (slate-600)
+
+SVG ELEMENT EXAMPLES:
+- Paths: <path d="M10,10 L100,100" stroke="#ef4444" stroke-width="3" fill="none"/>
+- Circles: <circle cx="50" cy="50" r="30" fill="#3b82f6" opacity="0.8"/>
+- Rectangles: <rect x="10" y="10" width="100" height="50" fill="#10b981" rx="5"/>
+- Text Labels: <text x="50" y="50" fill="#f8fafc" font-size="16" font-weight="600">Label</text>
+- Gradients: Use <defs><linearGradient>...</linearGradient></defs> for depth
+
+USE SVGs FOR THESE INTERACTION TYPES:
+
+${slide.interactionType === 'quiz' ? `
+QUIZ ICONS:
+- Question mark icon in circle:
+  <svg viewBox="0 0 100 100" class="w-16 h-16 mx-auto mb-4">
+    <circle cx="50" cy="50" r="45" fill="#3b82f6" opacity="0.2" stroke="#3b82f6" stroke-width="2"/>
+    <text x="50" y="65" text-anchor="middle" font-size="48" font-weight="bold" fill="#3b82f6">?</text>
+  </svg>
+- Checkmark/X icons for correct/incorrect feedback
+` : ''}
+
+${slide.interactionType === 'diagram' ? `
+ANATOMICAL DIAGRAM GUIDELINES:
+- Create cross-sectional views or system diagrams
+- Use clear anatomical terminology in labels
+- Include directional indicators (anterior/posterior, superior/inferior)
+- Use arrows to show flow (blood flow, neural pathways, etc.)
+- Layer transparency for depth: foreground 100%, background 40-60%
+- Example heart chamber:
+  <svg viewBox="0 0 400 400" class="w-full max-w-md mx-auto">
+    <defs>
+      <linearGradient id="heartGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" style="stop-color:#ef4444;stop-opacity:1" />
+        <stop offset="100%" style="stop-color:#dc2626;stop-opacity:1" />
+      </linearGradient>
+    </defs>
+    <ellipse cx="200" cy="200" rx="120" ry="140" fill="url(#heartGrad)" opacity="0.9"/>
+    <path d="M200,100 Q150,150 200,250 Q250,150 200,100" fill="#dc2626"/>
+    <text x="200" y="320" text-anchor="middle" fill="#f8fafc" font-size="14">Left Ventricle</text>
+  </svg>
+` : ''}
+
+${slide.interactionType === 'case-study' ? `
+CASE STUDY ICONS:
+- Patient profile icon
+- Medical chart/clipboard icon
+- Stethoscope icon
+- Lab results icon (test tubes, beakers)
+- All using medical color palette
+` : ''}
+
+${slide.interactionType === 'decision-tree' ? `
+DECISION TREE FLOWCHART:
+- Use rounded rectangles for decision nodes: <rect rx="10" ry="10"/>
+- Diamond shapes for yes/no branching: <path d="M50,0 L100,50 L50,100 L0,50 Z"/>
+- Arrows connecting nodes: <line> or <path> with <marker> for arrowheads
+- Color code by urgency: green (stable), yellow (monitor), red (immediate)
+` : ''}
+
+HERO/HEADER SVG EXAMPLE (for top of slide):
+<svg viewBox="0 0 800 200" class="w-full h-48 rounded-lg mb-6">
+  <rect width="800" height="200" fill="url(#heroGrad)"/>
+  <defs>
+    <linearGradient id="heroGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e293b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f172a;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Add relevant medical imagery here based on slide topic -->
+</svg>
+
+CRITICAL REQUIREMENTS:
+1. Generate AT LEAST 2 custom SVG graphics per slide (hero/header + detail/icon)
+2. SVGs must be inline in the HTML, not external files
+3. Use medical education best practices for clarity
+4. Ensure all text in SVGs is readable (minimum 12px font-size)
+5. Test that SVGs render properly in modern browsers
+6. Use semantic grouping and IDs for interactive elements if needed
+
+DO NOT:
+- Use emojis (🫀, 🧠, etc.) - create proper SVG icons instead
+- Use placeholder images or broken image links
+- Use external image URLs
+- Use base64 encoded images
+- Leave graphics as "TODO" or placeholder text
+`;
+
 
   const builderPrompt = `You are Builder Agent ${agentId}. Create an interactive HTML slide.
 
@@ -234,11 +413,12 @@ BUILD THIS SLIDE AS A COMPLETE <section> ELEMENT:
 CRITICAL RULES:
 1. Return ONLY the <section> HTML, no DOCTYPE, no explanations
 2. Use Tailwind CSS classes (will be provided by the shell)
-3. USE THE PROVIDED AI-GENERATED IMAGE URLS - Do NOT use emojis or placeholder images
-4. Include all JavaScript inline within <script> tags in the section
-5. Make it fully interactive and educational
-6. Use medical color system: red-500/20 (critical), yellow-500/20 (warning), green-500/20 (normal), blue-500/20 (info)
-7. All images should be responsive with proper alt text and Tailwind classes
+3. CREATE INLINE SVG GRAPHICS - Do NOT use emojis, external images, or placeholder images
+4. Generate AT LEAST 2 custom SVG graphics per slide following the guidelines above
+5. Include all JavaScript inline within <script> tags in the section
+6. Make it fully interactive and educational
+7. Use medical color system: red-500/20 (critical), yellow-500/20 (warning), green-500/20 (normal), blue-500/20 (info)
+8. All SVG graphics must be responsive with proper viewBox and accessibility attributes
 
 Return ONLY the <section> element:`;
 
@@ -255,15 +435,63 @@ Return ONLY the <section> element:`;
       onProgress
     );
 
+    // DEBUG: Log raw builder response
+    console.log(`🔍 [DEBUG] RAW BUILDER ${agentId} RESPONSE (first 500 chars):`, response.substring(0, 500));
+    console.log(`🔍 [DEBUG] Builder ${agentId} response length:`, response.length, 'chars');
+    console.log(`🔍 [DEBUG] Builder ${agentId} starts with:`, response.trim().substring(0, 50));
+
     onProgress?.('builder', baseProgress + 8, `🔨 Agent ${agentId}: Parsing HTML structure...`);
+
+    // Strip markdown code blocks if present (```html ... ``` or ``` ... ```)
+    let cleanedResponse = response.trim();
+    if (cleanedResponse.startsWith('```')) {
+      // Remove opening markdown fence (```html or ``` or ```xml)
+      cleanedResponse = cleanedResponse.replace(/^```(?:html|xml|xhtml)?\n?/, '');
+      // Remove closing markdown fence
+      cleanedResponse = cleanedResponse.replace(/\n?```\s*$/, '');
+      console.log(`🔍 [DEBUG] Stripped markdown code blocks from Builder ${agentId} response`);
+      console.log(`🔍 [DEBUG] Cleaned response now starts with:`, cleanedResponse.substring(0, 50));
+    }
+
+    // Extract section HTML with better validation
+    const sectionMatch = cleanedResponse.match(/<section[\s\S]*?<\/section>/i);
+
+    if (!sectionMatch) {
+      console.error(`❌ [Builder ${agentId}] No valid <section> found in response`);
+      console.error(`Response preview: ${cleanedResponse.substring(0, 500)}...`);
+
+      // Check if response looks like JSON
+      if (cleanedResponse.trim().startsWith('{') || cleanedResponse.trim().startsWith('[')) {
+        throw new Error(`Builder Agent ${agentId} returned JSON instead of HTML. The AI may have misunderstood the prompt.`);
+      }
+
+      // Check if response is too short to be valid HTML
+      if (cleanedResponse.length < 100) {
+        throw new Error(`Builder Agent ${agentId} returned incomplete HTML (${cleanedResponse.length} chars). Please try again.`);
+      }
+
+      // Use the cleaned response as fallback, but wrap it in a section
+      console.warn(`⚠️ [Builder ${agentId}] Wrapping response in <section> tag`);
+      const wrappedHtml = `<section id="slide-${slide.id}" class="slide-section min-h-screen p-8 bg-gradient-to-br from-slate-900 to-slate-800">
+        <div class="max-w-4xl mx-auto">
+          <h2 class="text-5xl font-bold text-white mb-6">${slide.title}</h2>
+          ${cleanedResponse}
+        </div>
+      </section>`;
+
+      return {
+        slideId: slide.id,
+        title: slide.title,
+        html: wrappedHtml
+      };
+    }
+
+    const sectionHtml = sectionMatch[0];
+
     onProgress?.('builder', baseProgress + 10, `🔨 Agent ${agentId}: Validating interactive elements...`);
     onProgress?.('builder', baseProgress + 11, `✅ Agent ${agentId}: Slide ${slide.id} complete!`);
 
-    // Extract section HTML
-    const sectionMatch = response.match(/<section[\s\S]*?<\/section>/i);
-    const sectionHtml = sectionMatch ? sectionMatch[0] : response;
-
-    console.log(`✅ [Builder ${agentId}] Slide ${slide.id} "${slide.title}" complete`);
+    console.log(`✅ [Builder ${agentId}] Slide ${slide.id} "${slide.title}" complete (${sectionHtml.length} chars)`);
 
     return {
       slideId: slide.id,
@@ -600,7 +828,30 @@ ${navItems}
 </html>`;
 
   onProgress?.('assembler', 95, '✅ Presentation assembled');
-  console.log('✅ [Assembler] Final HTML generated');
+
+  // Validate final HTML
+  if (!finalHtml || finalHtml.length < 1000) {
+    console.error('❌ [Assembler] Generated HTML is too short or empty');
+    throw new Error('Failed to generate valid presentation HTML. Please try again.');
+  }
+
+  if (!finalHtml.includes('<!DOCTYPE html>')) {
+    console.error('❌ [Assembler] Generated HTML missing DOCTYPE');
+    throw new Error('Generated HTML is incomplete. Please try again.');
+  }
+
+  if (!finalHtml.includes('</html>')) {
+    console.error('❌ [Assembler] Generated HTML missing closing tag');
+    throw new Error('Generated HTML is incomplete. Please try again.');
+  }
+
+  console.log(`✅ [Assembler] Final HTML generated (${finalHtml.length} chars, ${sortedFragments.length} slides)`);
+
+  // DEBUG: Log final HTML structure
+  console.log('🔍 [DEBUG] FINAL HTML (first 1000 chars):', finalHtml.substring(0, 1000));
+  console.log('🔍 [DEBUG] FINAL HTML (last 500 chars):', finalHtml.substring(finalHtml.length - 500));
+  console.log('🔍 [DEBUG] DOCTYPE check:', finalHtml.includes('<!DOCTYPE html>') ? '✅' : '❌');
+  console.log('🔍 [DEBUG] Closing HTML tag check:', finalHtml.includes('</html>') ? '✅' : '❌');
 
   return finalHtml;
 }
@@ -615,14 +866,20 @@ export async function generateParallelCourse(
   onProgress?: ProgressCallback
 ): Promise<string> {
   console.log('🚀 [Parallel Pipeline] Starting with MiniMax provider:', provider);
+  console.log('📝 Prompt length:', prompt.length, 'chars');
+  console.log('📁 Files:', files.length);
 
   try {
     // STEP 1: Architect Agent - Create curriculum outline
     onProgress?.('starting', 0, '🏗️ Initializing Parallel Pipeline...');
+    console.log('🏗️ [Step 1/3] Starting Architect Agent...');
+
     const outline = await architectAgent(prompt, files, provider, onProgress);
+    console.log(`✅ [Step 1/3] Architect complete - ${outline.slides.length} slides planned`);
 
     // STEP 2: Launch Parallel Builder Agents
     onProgress?.('parallel', 25, `🚀 Launching ${outline.slides.length} parallel builder agents...`);
+    console.log(`🔨 [Step 2/3] Launching ${outline.slides.length} Builder Agents in parallel...`);
 
     const builderPromises = outline.slides.map((slide, index) =>
       slideBuilderAgent(slide, outline, files, provider, index + 1, onProgress)
@@ -630,16 +887,33 @@ export async function generateParallelCourse(
 
     // Wait for all builders to complete
     const fragments = await Promise.all(builderPromises);
+    console.log(`✅ [Step 2/3] All ${fragments.length} Builder Agents complete`);
+
+    // Validate fragments
+    const invalidFragments = fragments.filter(f => !f.html || f.html.length < 50);
+    if (invalidFragments.length > 0) {
+      console.error(`❌ ${invalidFragments.length} invalid fragments detected`);
+      throw new Error(`${invalidFragments.length} slides failed to generate properly. Please try again.`);
+    }
 
     // STEP 3: Assembler - Stitch together
+    console.log('🔧 [Step 3/3] Assembling final HTML...');
     const finalHtml = assembler(outline, fragments, onProgress);
+    console.log(`✅ [Step 3/3] Assembly complete - ${finalHtml.length} chars`);
 
     onProgress?.('complete', 100, '✅ Parallel generation complete!');
+    console.log('🎉 [Parallel Pipeline] Generation successful!');
+
     return finalHtml;
 
   } catch (error: any) {
     console.error('❌ [Parallel Pipeline] Error:', error);
-    onProgress?.('error', 0, `Error: ${error.message}`);
+    console.error('Stack:', error.stack);
+
+    // Provide user-friendly error message
+    const userMessage = error.message || 'An unknown error occurred during generation';
+    onProgress?.('error', 0, `Error: ${userMessage}`);
+
     throw error;
   }
 }
